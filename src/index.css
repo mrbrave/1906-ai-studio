@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Epilogue:ital,wght@0,100..900;1,100..900&family=Manrope:wght@200..800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background-color: #f1efe7; 
+    color: #1a1a1a;
+    font-family: 'Manrope', sans-serif;
+}
+
+/* 1906 Custom Design System */
+.marker-stroke {
+    border-width: 3px;
+    border-style: solid;
+    border-color: #1a1a1a;
+}
+.agency-shadow {
+    box-shadow: 8px 8px 0px 0px rgba(1, 83, 126, 0.2); 
+}
+.agency-shadow-sm {
+    box-shadow: 4px 4px 0px 0px rgba(1, 83, 126, 0.2); 
+}
+.btn-irregular { border-radius: 4rem 1.5rem 3rem 2rem; }
+.card-irregular-1 { border-radius: 3rem 1.5rem 4rem 2rem; }
+.card-irregular-2 { border-radius: 2rem 4rem 1.5rem 3rem; }
+.card-irregular-3 { border-radius: 2rem 2rem 5rem 1rem; }
+
+/* Custom Scrollbars */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #01537e; border-radius: 4px; }
