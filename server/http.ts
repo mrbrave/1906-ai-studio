@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createHash, timingSafeEqual } from "node:crypto";
 export type Request = IncomingMessage & { body?: unknown };
 export class HttpError extends Error {
   constructor(
@@ -24,6 +25,20 @@ export function endpoint(action: (body: unknown) => Promise<unknown>) {
           503,
           "Live engines are not enabled. Use demo mode or configure the server.",
         );
+      const secret = process.env.STUDIO_ACCESS_TOKEN;
+      if (!secret || secret.length < 32)
+        throw new HttpError(
+          503,
+          "Configure a private Studio access code of at least 32 characters.",
+        );
+      const header = req.headers?.authorization;
+      const token =
+        typeof header === "string" && header.startsWith("Bearer ")
+          ? header.slice(7)
+          : "";
+      const digest = (s: string) => createHash("sha256").update(s).digest();
+      if (!timingSafeEqual(digest(token), digest(secret)))
+        throw new HttpError(401, "Enter the private Studio access code.");
       let body: unknown = req.body;
       if (body === undefined) {
         let raw = "";

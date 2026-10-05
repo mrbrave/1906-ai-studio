@@ -1,7 +1,9 @@
+import type { UsageSummary } from "../types/live";
 import { Plus, Sparkles, MessageSquare, Zap } from "lucide-react";
 import type { Provider, StudioData } from "../types/database.types";
 interface Props {
   data: StudioData;
+  usage?: UsageSummary;
   activeId: string | null;
   provider: Provider;
   onProvider: (p: Provider) => void;
@@ -17,6 +19,7 @@ export function Sidebar({
   onNew,
   onCreate,
   onSelect,
+  usage,
 }: Props) {
   const user = data.users[0];
   return (
@@ -72,8 +75,7 @@ export function Sidebar({
           onChange={(e) => onProvider(e.target.value as Provider)}
         >
           <option value="demo">Demo · illustrative only</option>
-          <option value="gemini">Gemini</option>
-          <option value="openai">OpenAI</option>
+          <option value="gemini">Gemini + JEV · private testing</option>
         </select>
       </div>
       <footer className="profile">
@@ -83,8 +85,13 @@ export function Sidebar({
         <div>
           <strong>{user.display_name}</strong>
           <small>
-            <Zap size={12} /> {user.compute_credits.toLocaleString()} CRD{" "}
-            <span className="muted">· demo balance</span>
+            <Zap size={12} />{" "}
+            {usage
+              ? `Usage remaining · ${usage.remainingPercentage > 0 && usage.remainingPercentage < 1 ? "<1" : Math.floor(usage.remainingPercentage * 10) / 10}%`
+              : `${user.compute_credits.toLocaleString()} CRD · demo balance`}
+            {usage?.status === "review_required" && (
+              <span> · review required</span>
+            )}
           </small>
         </div>
       </footer>

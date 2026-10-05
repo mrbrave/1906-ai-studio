@@ -27,7 +27,7 @@ export interface Conversation {
   updated_at: string;
 }
 export interface Telemetry {
-  intentScore: number;
+  intentScore: number | null;
   sentiment: string;
   activeFriction: string;
   suggestedTweak: string;

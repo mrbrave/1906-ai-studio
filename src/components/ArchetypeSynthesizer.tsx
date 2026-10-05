@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Sparkles, ArrowLeft } from "lucide-react";
 import type { Provider } from "../types/database.types";
 import type { ArchetypeDraft } from "../api/contracts";
@@ -8,11 +8,14 @@ export function ArchetypeSynthesizer({
   provider,
   onSave,
   onBack,
+  onUsageChanged,
 }: {
   provider: Provider;
   onSave: (draft: ArchetypeDraft) => void;
   onBack: () => void;
+  onUsageChanged?: () => void;
 }) {
+  const request = useRef<{ id: string; description: string } | null>(null);
   const [draft, setDraft] = useState<ArchetypeDraft>({
     name: "",
     role: "",
@@ -25,18 +28,34 @@ export function ArchetypeSynthesizer({
   async function generate() {
     if (provider === "demo") {
       setError(
-        "Choose Gemini or OpenAI in the sidebar for AI generation, or configure your archetype manually.",
+        "Choose Gemini + JEV private testing in the sidebar for AI generation, or configure your archetype manually.",
       );
       return;
     }
     setBusy(true);
     setError("");
     try {
-      setDraft(await synthesiseArchetype(description.trim(), provider));
+      if (
+        !request.current ||
+        request.current.description !== description.trim()
+      )
+        request.current = {
+          id: crypto.randomUUID(),
+          description: description.trim(),
+        };
+      setDraft(
+        await synthesiseArchetype(
+          description.trim(),
+          provider,
+          request.current.id,
+        ),
+      );
+      request.current = null;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed.");
     } finally {
       setBusy(false);
+      onUsageChanged?.();
     }
   }
   return (

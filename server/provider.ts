@@ -1,78 +1,76 @@
 import { HttpError } from "./http.js";
 import { nonEmpty } from "../src/api/validation.js";
-export function parseProvider(p: unknown): "gemini" | "openai" {
-  if (p !== "gemini" && p !== "openai")
-    throw new HttpError(400, "Choose Gemini or OpenAI.");
-  return p;
-}
-export async function complete(
-  provider: "gemini" | "openai",
+import { MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS } from "./budget.js";
+import { modelPost } from "./model-http.js";
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+export function geminiBody(
   system: string,
-  messages: { role: "user" | "assistant"; content: string }[],
+  messages: ChatMessage[],
   json = false,
-): Promise<string> {
-  const key =
-    process.env[provider === "gemini" ? "GEMINI_API_KEY" : "OPENAI_API_KEY"];
-  const model =
-    process.env[provider === "gemini" ? "GEMINI_MODEL" : "OPENAI_MODEL"];
+) {
+  return {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: messages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    })),
+    generationConfig: {
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      thinkingConfig: { thinkingLevel: "low" },
+      ...(json ? { responseMimeType: "application/json" } : {}),
+    },
+  };
+}
+export async function complete(body: ReturnType<typeof geminiBody>) {
+  const key = process.env.GEMINI_API_KEY,
+    model = process.env.GEMINI_MODEL;
   if (!key || !model)
     throw new HttpError(
       503,
-      `${provider} requires a server API key and model configuration.`,
+      "Gemini requires a server API key and model configuration.",
     );
-  const isGemini = provider === "gemini";
-  const url = isGemini
-    ? `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`
-    : "https://api.openai.com/v1/chat/completions";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(isGemini
-      ? { "x-goog-api-key": key }
-      : { Authorization: `Bearer ${key}` }),
-  };
-  const body = isGemini
-    ? {
-        systemInstruction: { parts: [{ text: system }] },
-        contents: messages.map((m) => ({
-          role: m.role === "assistant" ? "model" : "user",
-          parts: [{ text: m.content }],
-        })),
-        generationConfig: {
-          ...(json ? { responseMimeType: "application/json" } : {}),
-          maxOutputTokens: 2048,
-        },
-      }
-    : {
-        model,
-        messages: [{ role: "system", content: system }, ...messages],
-        ...(json ? { response_format: { type: "json_object" } } : {}),
-        max_completion_tokens: 2048,
-      };
+  const base = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;
+  // Official token counting, including the system instruction. No character/token guessing.
+  let count: any;
   try {
-    const response = await fetch(url, {
+    const r = await fetch(`${base}:countTokens`, {
       method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(35000),
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        generateContentRequest: { model: `models/${model}`, ...body },
+      }),
+      signal: AbortSignal.timeout(10000),
     });
-    if (!response.ok)
-      throw new HttpError(
-        502,
-        `${provider} could not complete the request (${response.status}).`,
-      );
-    const data = await response.json();
-    const text = isGemini
-      ? data.candidates?.[0]?.content?.parts
-          ?.filter((p: { thought?: boolean; text?: string }) => !p.thought)
-          .map((p: { text?: string }) => p.text || "")
-          .join("")
-      : data.choices?.[0]?.message?.content;
-    return nonEmpty(text);
-  } catch (error) {
-    if (error instanceof HttpError) throw error;
+    if (!r.ok) throw new Error();
+    count = await r.json();
+  } catch {
     throw new HttpError(
       502,
-      `${provider} returned no usable reply or timed out. Please retry.`,
+      "Gemini input counting failed. No generation was requested.",
     );
   }
+  if (!Number.isSafeInteger(count.totalTokens) || count.totalTokens < 0)
+    throw new HttpError(
+      502,
+      "Gemini input count was invalid. No generation was requested.",
+    );
+  if (count.totalTokens > MAX_INPUT_TOKENS)
+    throw new HttpError(
+      413,
+      "This conversation exceeds the test input limit. Start a new dialogue.",
+    );
+  return modelPost(`${base}:generateContent`, { "x-goog-api-key": key }, body);
+}
+export function completionText(raw: any): string {
+  if (raw?.candidates?.[0]?.finishReason !== "STOP")
+    throw new Error(
+      "Gemini did not finish a usable reply. Retry with a shorter message.",
+    );
+  return nonEmpty(
+    raw.candidates[0].content?.parts
+      ?.filter((p: any) => !p.thought)
+      .map((p: any) => p.text || "")
+      .join(""),
+    16000,
+  );
 }

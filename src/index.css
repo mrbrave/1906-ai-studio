@@ -793,3 +793,58 @@ h3 {
     scroll-behavior: auto !important;
   }
 }
+
+/* Private single-user test workspace */
+.private-login {
+  max-width: 560px;
+  margin: 10vh auto;
+  padding: 2rem;
+}
+.private-login h1 {
+  font-size: 2.5rem;
+  margin: 1rem 0;
+}
+.private-login form,
+.intent-form {
+  display: grid;
+  gap: 1.2rem;
+  margin: 1.5rem 0;
+  max-width: 720px;
+}
+.private-login label,
+.intent-form label {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.private-login input,
+.intent-form input,
+.intent-form textarea,
+.intent-form select {
+  padding: 0.8rem;
+  border: 1px solid #01537e;
+  border-radius: 6px;
+  background: #faf9f6;
+  color: #1a1a1a;
+  width: 100%;
+}
+.private-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1.5rem;
+  border-bottom: 1px solid #d1d5db;
+  font-size: 0.8rem;
+}
+.private-toolbar span {
+  margin-right: auto;
+}
+.private-toolbar button {
+  text-decoration: underline;
+}
+.intent-summary {
+  padding: 0.6rem 1.5rem;
+  background: #e1f3fa;
+  font-size: 0.85rem;
+}
