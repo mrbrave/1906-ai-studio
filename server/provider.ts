@@ -1,5 +1,5 @@
-import { HttpError } from "./http";
-import { nonEmpty } from "../src/api/validation";
+import { HttpError } from "./http.js";
+import { nonEmpty } from "../src/api/validation.js";
 export function parseProvider(p: unknown): "gemini" | "openai" {
   if (p !== "gemini" && p !== "openai")
     throw new HttpError(400, "Choose Gemini or OpenAI.");
