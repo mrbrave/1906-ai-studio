@@ -1,11 +1,11 @@
-import { endpoint } from "../server/http";
-import { evaluateWithJEV } from "../server/jev";
+import { endpoint } from "../server/http.js";
+import { evaluateWithJEV } from "../server/jev.js";
 import {
   nonEmpty,
   parseDraft,
   parseTelemetry,
   record,
-} from "../src/api/validation";
+} from "../src/api/validation.js";
 export default endpoint(async (value) => {
   const body = record(value);
   const a = record(body.archetype);

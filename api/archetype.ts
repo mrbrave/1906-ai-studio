@@ -1,6 +1,6 @@
-import { endpoint } from "../server/http";
-import { complete, parseProvider } from "../server/provider";
-import { nonEmpty, parseDraft, record } from "../src/api/validation";
+import { endpoint } from "../server/http.js";
+import { complete, parseProvider } from "../server/provider.js";
+import { nonEmpty, parseDraft, record } from "../src/api/validation.js";
 export default endpoint(async (value) => {
   const body = record(value);
   const text = await complete(
