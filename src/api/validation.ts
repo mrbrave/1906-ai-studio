@@ -15,16 +15,17 @@ export function parseTelemetry(value: unknown): Telemetry {
   if (
     Object.keys(d).sort().join(",") !==
       "activeFriction,intentScore,sentiment,suggestedTweak" ||
-    typeof d.intentScore !== "number" ||
-    !Number.isFinite(d.intentScore) ||
-    d.intentScore < 0 ||
-    d.intentScore > 100
+    (d.intentScore !== null &&
+      (typeof d.intentScore !== "number" ||
+        !Number.isFinite(d.intentScore) ||
+        d.intentScore < 0 ||
+        d.intentScore > 100))
   )
     throw new Error(
-      "Invalid JEV telemetry: expected a score from 0 to 100 and exactly four fields.",
+      "Invalid JEV telemetry: expected a score from 0 to 100 (or null for uncertainty) and exactly four fields.",
     );
   return {
-    intentScore: d.intentScore,
+    intentScore: d.intentScore as number | null,
     sentiment: nonEmpty(d.sentiment, 200),
     activeFriction: nonEmpty(d.activeFriction, 4000),
     suggestedTweak: nonEmpty(d.suggestedTweak, 4000),

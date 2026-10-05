@@ -1,3 +1,4 @@
+import { LiveStudio } from "./components/LiveStudio";
 import { useRef, useState } from "react";
 import { X, ArrowLeft } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
@@ -6,7 +7,6 @@ import { TelemetryDrawer } from "./components/TelemetryDrawer";
 import { ArchetypeSynthesizer } from "./components/ArchetypeSynthesizer";
 import { loadStudio, saveStudio } from "./services/storageService";
 import { runDialogueTurn } from "./services/llmService";
-import { evaluateInteraction } from "./api/typesafe.client";
 import type { ArchetypeDraft } from "./api/contracts";
 import type {
   Archetype,
@@ -28,6 +28,18 @@ function initial(): { data: StudioData | null; error: string } {
   }
 }
 export default function App() {
+  const [live, setLive] = useState(() => window.location.hash === "#private");
+  const change = (enabled: boolean) => {
+    window.location.hash = enabled ? "private" : "";
+    setLive(enabled);
+  };
+  return live ? (
+    <LiveStudio onExit={() => change(false)} />
+  ) : (
+    <DemoApp onLive={() => change(true)} />
+  );
+}
+function DemoApp({ onLive }: { onLive: () => void }) {
   const [loaded] = useState(initial);
   const [data, setData] = useState(loaded.data);
   const dataRef = useRef(data);
@@ -189,62 +201,6 @@ export default function App() {
       setPending(null);
     }
   }
-  async function retryTelemetry(message: Message) {
-    if (lock.current) return;
-    const snapshot = dataRef.current!;
-    const c = snapshot.conversations.find(
-      (c) => c.id === message.conversation_id,
-    )!;
-    const a = snapshot.archetypes.find((a) => a.id === c.archetype_id)!;
-    const thread = snapshot.messages.filter((m) => m.conversation_id === c.id);
-    const index = thread.findIndex((m) => m.id === message.id);
-    const pitch = thread
-      .slice(0, index)
-      .reverse()
-      .find((m) => m.role === "user")?.content;
-    if (!pitch) return;
-    lock.current = true;
-    setPending(c.id);
-    update((d) => ({
-      ...d,
-      messages: d.messages.map((m) =>
-        m.id === message.id
-          ? { ...m, telemetry_status: "pending", error: null }
-          : m,
-      ),
-    }));
-    try {
-      const telemetry = await evaluateInteraction({
-        archetype: a,
-        pitch,
-        response: message.content,
-      });
-      update((d) => ({
-        ...d,
-        messages: d.messages.map((m) =>
-          m.id === message.id
-            ? { ...m, telemetry_status: "complete", telemetry }
-            : m,
-        ),
-      }));
-    } catch (e) {
-      update((d) => ({
-        ...d,
-        messages: d.messages.map((m) =>
-          m.id === message.id
-            ? {
-                ...m,
-                telemetry_status: "failed",
-                error: e instanceof Error ? e.message : "Evaluation failed.",
-              }
-            : m,
-        ),
-      }));
-    } finally {
-      lock.current = false;
-      setPending(null);
-    }
-  }
   if (!data)
     return (
       <main className="fatal">
@@ -279,7 +235,7 @@ export default function App() {
           data={data}
           activeId={view === "chat" ? activeId : null}
           provider={provider}
-          onProvider={setProvider}
+          onProvider={(p) => (p === "demo" ? setProvider(p) : onLive())}
           onNew={() => {
             setView("new");
             setDrawer(false);
@@ -367,9 +323,7 @@ export default function App() {
               message={currentTelemetry}
               busy={pending === activeId}
               onClose={closeDrawer}
-              onRetry={() =>
-                currentTelemetry && void retryTelemetry(currentTelemetry)
-              }
+              onRetry={() => {}}
             />
           </>
         )}

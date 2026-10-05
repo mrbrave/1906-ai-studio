@@ -1,3 +1,4 @@
+import type { DecisionState } from "../types/live";
 import { useEffect, useRef } from "react";
 import { X, Radar, TriangleAlert, WandSparkles } from "lucide-react";
 import type { Message } from "../types/database.types";
@@ -7,8 +8,10 @@ export function TelemetryDrawer({
   busy,
   onClose,
   onRetry,
+  decision,
 }: {
   open: boolean;
+  decision?: DecisionState | null;
   message?: Message;
   busy: boolean;
   onClose: () => void;
@@ -41,13 +44,15 @@ export function TelemetryDrawer({
         <p className="eyebrow">
           {message?.provider === "demo"
             ? "Demo fixture · not a prediction"
-            : "JEV · independent evaluation"}
+            : "JEV · state used for this reply"}
         </p>
         <div>
-          <h3 className="eyebrow">Purchase intent</h3>
+          <h3 className="eyebrow">Decision readiness</h3>
           <div className="score">
-            {t ? t.intentScore : "—"}
-            <span>%</span>
+            {decision
+              ? (decision.readinessIndex ?? "Uncertain")
+              : (t?.intentScore ?? "—")}
+            <span>{decision?.readinessIndex === null ? "" : "/100"}</span>
           </div>
           <div className="score-track">
             <div style={{ width: `${t?.intentScore ?? 0}%` }} />
@@ -64,6 +69,14 @@ export function TelemetryDrawer({
                   : "Awaiting pitch")}
           </p>
         </div>
+        <p className="muted">
+          A simulation index, not a real-world purchase probability.
+        </p>
+        {decision && (
+          <p className="muted">
+            Response action: {decision.responseAction.replaceAll("_", " ")}
+          </p>
+        )}
         {t ? (
           <>
             <section className="friction">
@@ -74,7 +87,7 @@ export function TelemetryDrawer({
             </section>
             <section className="tweak">
               <h3>
-                <WandSparkles size={16} /> Strategic copywriting tweak
+                <WandSparkles size={16} /> Suggested next approach
               </h3>
               <p>{t.suggestedTweak}</p>
             </section>
@@ -82,13 +95,8 @@ export function TelemetryDrawer({
         ) : (
           <p className="empty-telemetry">
             {message?.error ||
-              "Send a pitch to receive evaluator feedback. Your buyer’s reply appears first; analytics follow."}
+              "Send a pitch to assess the buyer’s decision state before the reply."}
           </p>
-        )}
-        {message?.telemetry_status === "failed" && (
-          <button className="secondary" disabled={busy} onClick={onRetry}>
-            Retry analytics
-          </button>
         )}
       </div>
     </aside>

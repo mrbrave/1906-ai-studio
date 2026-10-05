@@ -76,7 +76,7 @@ export function ChatWorkspace({
           Strategic dialogue <span> / </span>{" "}
           {provider === "demo"
             ? "Demo mode · illustrative responses and scores"
-            : `${provider} dialogue + JEV evaluation`}
+            : "Private testing · JEV decision → Gemini reply"}
         </p>
         {!messages.length && (
           <div className="welcome">
@@ -137,7 +137,7 @@ export function ChatWorkspace({
         {pendingHere && (
           <p className="working" role="status">
             {messages.at(-1)?.role === "assistant"
-              ? "Evaluating the interaction…"
+              ? "Saving decision and reply…"
               : `${archetype.name} is considering your pitch…`}
           </p>
         )}
@@ -184,7 +184,7 @@ export function ChatWorkspace({
         <p>
           {provider === "demo"
             ? "15 demo CRD per completed reply"
-            : "Live usage billed by your provider · demo balance unchanged"}
+            : "JEV + Gemini usage counted against your Studio allowance"}
           <span>Enter to send · Shift + Enter for a new line</span>
         </p>
       </form>
