@@ -467,6 +467,15 @@ h3 {
   overflow: auto;
   display: grid;
   gap: 28px;
+  overflow-wrap: anywhere;
+}
+.telemetry .muted {
+  color: #bddbe8;
+}
+.intent-summary[open] {
+  max-height: 28vh;
+  overflow: auto;
+  flex-shrink: 0;
 }
 .telemetry .eyebrow {
   opacity: 0.75;

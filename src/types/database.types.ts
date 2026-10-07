@@ -44,6 +44,7 @@ export interface Message {
   telemetry_status: "none" | "pending" | "complete" | "failed";
   telemetry: Telemetry | null;
   error: string | null;
+  evaluation?: import("./live").DecisionState;
 }
 export interface StudioData {
   version: 1;

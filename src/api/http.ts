@@ -1,4 +1,12 @@
 let accessCode = "";
+export class ResponseError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 export function setStudioAccessCode(value: string) {
   accessCode = value;
 }
@@ -18,7 +26,8 @@ export async function postJSON(path: string, body: unknown): Promise<unknown> {
     });
     const data = await response.json().catch(() => null);
     if (!response.ok)
-      throw new Error(
+      throw new ResponseError(
+        response.status,
         data?.error ||
           `Request failed (${response.status}). Check the server configuration.`,
       );

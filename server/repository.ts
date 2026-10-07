@@ -20,7 +20,7 @@ export interface Attempt {
 export interface Operation {
   id: string;
   hash: string;
-  kind: "dialogue" | "archetype";
+  kind: "dialogue" | "archetype" | "assessment";
   conversationId?: string;
   status: "running" | "failed" | "complete" | "uncertain";
   startedAt: string;

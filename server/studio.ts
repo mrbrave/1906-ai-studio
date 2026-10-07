@@ -42,6 +42,60 @@ export function snapshot(s: Store): LiveSnapshot {
 }
 export async function studio(value: unknown, repo: Repository) {
   const b = record(value);
+  if (b.action === "continue_conversation") {
+    const key = id(b.id),
+      sourceId = id(b.sourceId),
+      summary = nonEmpty(b.summary, 8000);
+    await mutate(repo, (s) => {
+      const source = s.conversations.find((c) => c.id === sourceId);
+      if (!source) throw new HttpError(404, "Source dialogue not found.");
+      const existing = s.conversations.find((c) => c.id === key);
+      if (existing) {
+        if (
+          existing.continuationOf !== sourceId ||
+          existing.continuationSummary !== summary
+        )
+          throw new HttpError(409, "Continuation ID conflict.");
+        return;
+      }
+      if (s.conversations.length >= 100)
+        throw new HttpError(
+          409,
+          "Test conversation quota reached. Archive before creating a continuation.",
+        );
+      if (
+        s.operations.some(
+          (o) =>
+            o.conversationId === sourceId &&
+            ["running", "uncertain"].includes(o.status) &&
+            o.kind === "dialogue",
+        )
+      )
+        throw new HttpError(
+          409,
+          "Recover the unfinished reply before creating a continuation.",
+        );
+      s.conversations.push({
+        id: key,
+        archetype: structuredClone(source.archetype),
+        intent: structuredClone(source.intent),
+        version: 0,
+        state: null,
+        continuationOf: sourceId,
+        continuationSummary: summary,
+      });
+      const now = new Date().toISOString();
+      s.data.conversations.unshift({
+        id: key,
+        user_id: STUDIO_USER,
+        archetype_id: source.archetype.id,
+        title: `Continuation · ${source.archetype.name}`,
+        created_at: now,
+        updated_at: now,
+      });
+    });
+    return snapshot((await repo.read()).state);
+  }
   if (b.action === "snapshot") return snapshot((await repo.read()).state);
   if (b.action === "save_archetype") {
     const draft = parseDraft(b.draft),

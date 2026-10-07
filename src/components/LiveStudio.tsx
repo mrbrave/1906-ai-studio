@@ -7,8 +7,16 @@ import {
   createConversation,
   saveLiveArchetype,
   liveTurn,
+  assessReply,
+  continueConversation,
 } from "../api/live.client";
-import { setStudioAccessCode } from "../api/http";
+import {
+  readDrafts,
+  writeDraft,
+  writePending,
+  clearDrafts,
+} from "../services/draftService";
+import { ResponseError, setStudioAccessCode } from "../api/http";
 import { Sidebar } from "./Sidebar";
 import { ChatWorkspace } from "./ChatWorkspace";
 import { TelemetryDrawer } from "./TelemetryDrawer";
@@ -19,6 +27,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const [drafts, setDrafts] = useState(() => readDrafts().texts);
+  const [draftWarning, setDraftWarning] = useState(false);
+  const [continuation, setContinuation] = useState<string | null>(null);
+  function draft(id: string, text: string) {
+    setDraftWarning(!writeDraft(id, text));
+    setDrafts((d) => ({ ...d, [id]: text }));
+  }
+  const refreshSequence = useRef(0);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "new" | "create">("new");
   const [drawer, setDrawer] = useState(false),
@@ -34,10 +50,11 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     conversationId: string;
     pitch: string;
     version: number;
-  } | null>(null);
+  } | null>(readDrafts().pending);
   async function refresh() {
+    const sequence = ++refreshSequence.current;
     const next = await liveSnapshot();
-    setSnapshot(next);
+    if (sequence === refreshSequence.current) setSnapshot(next);
     return next;
   }
   async function act(work: () => Promise<void>) {
@@ -58,6 +75,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     setStudioAccessCode("");
     setSnapshot(null);
     setCode("");
+    clearDrafts();
     onExit();
   }
   async function unlock() {
@@ -67,7 +85,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         const next = await refresh();
         setCode("");
         setArchetypeId(next.data.archetypes[0]?.id ?? "");
-        const first = next.conversations[0]?.id ?? null;
+        const first =
+          pending.current?.conversationId ?? next.conversations[0]?.id ?? null;
         setActiveId(first);
         setView(first ? "chat" : "new");
       } catch (e) {
@@ -103,7 +122,10 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           version: c.version,
         });
     pending.current = attempt;
+    writePending(attempt);
+    if (!retry) draft(c.id, attempt.pitch);
     await act(async () => {
+      let rejectedBeforeAdmission = false;
       try {
         await liveTurn(
           attempt.conversationId,
@@ -112,15 +134,45 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           attempt.id,
         );
         pending.current = null;
+        writePending(null);
+        draft(c.id, "");
+      } catch (e) {
+        rejectedBeforeAdmission =
+          e instanceof ResponseError && e.status >= 400 && e.status < 500;
+        throw e;
       } finally {
         const next = await refresh();
         if (
+          (rejectedBeforeAdmission &&
+            !next.operations.some((o) => o.id === attempt.id)) ||
           next.operations.some(
             (o) =>
               o.id === attempt.id && ["complete", "failed"].includes(o.status),
           )
-        )
+        ) {
           pending.current = null;
+          writePending(null);
+          if (
+            next.operations.find((o) => o.id === attempt.id)?.status ===
+            "complete"
+          )
+            draft(c.id, "");
+        }
+      }
+      const current = await refresh();
+      const reply = current.data.messages
+        .filter((m) => m.conversation_id === c.id && m.role === "assistant")
+        .at(-1);
+      if (reply && reply.telemetry_status !== "complete") {
+        try {
+          await assessReply(
+            c.id,
+            reply.id,
+            current.conversations.find((x) => x.id === c.id)!.version,
+          );
+        } finally {
+          await refresh();
+        }
       }
     });
   }
@@ -167,8 +219,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   const messages = snapshot.data.messages.filter(
     (m) => m.conversation_id === activeId,
   );
-  const latest =
-    messages.at(-1)?.role === "assistant" ? messages.at(-1) : undefined;
+  const latest = messages.filter((m) => m.role === "assistant").at(-1);
+  const previousAssessment = messages
+    .filter(
+      (m) =>
+        m.evaluation?.phase === "post_reply" &&
+        m.telemetry_status === "complete",
+    )
+    .at(-1);
   const unfinished = snapshot.operations.find(
     (o) => o.status === "running" || o.status === "uncertain",
   );
@@ -221,8 +279,17 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                       o.id === pending.current!.id &&
                       ["complete", "failed"].includes(o.status),
                   )
-                )
+                ) {
+                  draft(
+                    pending.current.conversationId,
+                    next.operations.find((o) => o.id === pending.current!.id)
+                      ?.status === "complete"
+                      ? ""
+                      : pending.current.pitch,
+                  );
                   pending.current = null;
+                  writePending(null);
+                }
               })
             }
           >
@@ -244,10 +311,21 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               : "A request is still running. Refresh its status before retrying."}
           </p>
         )}
+        {draftWarning && (
+          <p role="alert">
+            Browser draft storage is unavailable. Copy your draft before
+            refreshing or leaving this tab.
+          </p>
+        )}
         {pending.current && !busy && !unfinished && (
           <button
             className="secondary"
-            onClick={() => void send(pending.current!.pitch)}
+            onClick={() => {
+              const p = pending.current!;
+              setActiveId(p.conversationId);
+              setView("chat");
+              draft(p.conversationId, p.pitch);
+            }}
           >
             Recover last request
           </button>
@@ -318,6 +396,9 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                   }
                 />
               </label>
+              <p className="muted">
+                What do you want to learn from the conversation?
+              </p>
               <label>
                 Proposition
                 <textarea
@@ -330,21 +411,25 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                   }
                 />
               </label>
+              <p className="muted">
+                Describe the offer, relevant details and success criteria.
+              </p>
               <label>
                 Target decision
                 <input
                   required
                   maxLength={1000}
                   value={intent.targetDecision}
-                  placeholder="For example: agree to a discovery workshop"
+                  placeholder="For example: agree to a paid pilot using one RDL-owned module"
                   onChange={(e) =>
                     setIntent({ ...intent, targetDecision: e.target.value })
                   }
                 />
               </label>
               <p className="muted">
-                This intent stays fixed for the conversation. Start a new
-                dialogue to test a different decision.
+                Ask for one clear action. Put success criteria in the
+                proposition. This intent stays fixed for the conversation. Start
+                a new dialogue to test a different decision.
               </p>
               <button className="primary" disabled={busy}>
                 Start dialogue
@@ -356,7 +441,93 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
             <div className="intent-summary">
               <strong>Target decision:</strong> {c.intent.targetDecision}
             </div>
+            {c.memory && (
+              <details className="intent-summary">
+                <summary>
+                  Working memory · version {c.memory.version} · full transcript
+                  retained
+                </summary>
+                <p>
+                  Summarised through {c.memory.lastSummarisedTurnId}.{" "}
+                  {c.memory.omittedSellerParagraphs} older seller paragraphs
+                  omitted from working context. Buyer statements, conditions and
+                  figures are retained as exact evidence.
+                </p>
+                {c.memory.entries.map((e, i) => (
+                  <p key={i}>
+                    <strong>
+                      {e.speaker} · {e.turnId}:
+                    </strong>{" "}
+                    {e.quote}
+                  </p>
+                ))}
+              </details>
+            )}
+            {c.continuationOf && (
+              <details className="intent-summary">
+                <summary>Reviewed continuation context</summary>
+                <p>{c.continuationSummary}</p>
+                <button onClick={() => setActiveId(c.continuationOf!)}>
+                  Open original dialogue
+                </button>
+              </details>
+            )}
+            {error.includes("bounded working context") && (
+              <button
+                disabled={busy}
+                onClick={() =>
+                  setContinuation(
+                    `Buyer’s latest statement (quote):\n${latest?.content ?? "No completed reply"}\n\nRemaining conditions and proposal details to carry forward (review and complete):\n`,
+                  )
+                }
+              >
+                Review linked continuation
+              </button>
+            )}
+            {continuation !== null && (
+              <section className="intent-summary">
+                <label>
+                  Continuation summary
+                  <textarea
+                    rows={8}
+                    value={continuation}
+                    onChange={(e) => setContinuation(e.target.value)}
+                  />
+                </label>
+                <p>
+                  Review accepted points, unresolved concerns, figures and
+                  conditions. The persona and target stay fixed. This summary is
+                  labelled as user-reviewed context.
+                </p>
+                <button
+                  disabled={
+                    busy || !continuation.trim() || continuation.length > 8000
+                  }
+                  onClick={() =>
+                    void act(async () => {
+                      const nextId = crypto.randomUUID();
+                      const next = await continueConversation(
+                        nextId,
+                        c.id,
+                        continuation,
+                      );
+                      draft(nextId, drafts[c.id] ?? "");
+                      pending.current = null;
+                      writePending(null);
+                      setSnapshot(next);
+                      setActiveId(nextId);
+                      setContinuation(null);
+                    })
+                  }
+                >
+                  Create linked continuation
+                </button>
+                <button onClick={() => setContinuation(null)}>Cancel</button>
+              </section>
+            )}
             <ChatWorkspace
+              draft={drafts[c.id] ?? ""}
+              onDraft={(text) => draft(c.id, text)}
               key={activeId}
               archetype={c.archetype}
               messages={messages}
@@ -374,10 +545,21 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
             <TelemetryDrawer
               open={drawer}
               message={latest}
-              decision={latest ? c.state : null}
+              decision={latest?.evaluation ?? (latest ? c.state : null)}
+              preDecision={c.state}
+              previous={previousAssessment}
               busy={busy}
               onClose={() => setDrawer(false)}
-              onRetry={() => {}}
+              onRetry={() =>
+                void act(async () => {
+                  if (!latest) return;
+                  try {
+                    await assessReply(c.id, latest.id, c.version);
+                  } finally {
+                    await refresh();
+                  }
+                })
+              }
             />
           </>
         )}

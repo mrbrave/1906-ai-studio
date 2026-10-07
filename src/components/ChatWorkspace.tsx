@@ -10,6 +10,8 @@ interface Props {
   analyticsOpen: boolean;
   onAnalytics: () => void;
   onSend: (text: string) => void;
+  draft?: string;
+  onDraft?: (text: string) => void;
   onRetry: (message: Message) => void;
   onMenu: () => void;
 }
@@ -24,16 +26,21 @@ export function ChatWorkspace({
   onSend,
   onRetry,
   onMenu,
+  draft,
+  onDraft,
 }: Props) {
-  const [text, setText] = useState("");
+  const [localText, setLocalText] = useState("");
+  const text = draft ?? localText;
+  const limit = provider === "demo" ? 16000 : 4000;
+  const setText = onDraft ?? setLocalText;
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
   }, [messages, busy]);
   function send() {
-    if (text.trim() && !busy) {
-      onSend(text.trim());
-      setText("");
+    if (text.trim() && !busy && text.length <= limit) {
+      onSend(text);
+      if (!onDraft) setText("");
     }
   }
   return (
@@ -157,7 +164,6 @@ export function ChatWorkspace({
           <textarea
             id="pitch"
             rows={3}
-            maxLength={16000}
             value={text}
             disabled={busy}
             onChange={(e) => setText(e.target.value)}
@@ -176,15 +182,16 @@ export function ChatWorkspace({
           <button
             className="send"
             aria-label="Send message"
-            disabled={busy || !text.trim()}
+            disabled={busy || !text.trim() || text.length > limit}
           >
             <ArrowUp size={22} />
           </button>
         </div>
         <p>
+          {text.length.toLocaleString()} / {limit.toLocaleString()} characters ·{" "}
           {provider === "demo"
             ? "15 demo CRD per completed reply"
-            : "JEV + Gemini usage counted against your Studio allowance"}
+            : "JEV guidance + Gemini reply + JEV assessment · metered usage"}
           <span>Enter to send · Shift + Enter for a new line</span>
         </p>
       </form>

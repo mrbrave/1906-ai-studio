@@ -1,7 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/dialogue.ts": { "maxDuration": 120 },
-    "api/archetype.ts": { "maxDuration": 120 }
+    "api/dialogue.ts": {
+      "maxDuration": 120
+    },
+    "api/archetype.ts": {
+      "maxDuration": 120
+    },
+    "api/assessment.ts": {
+      "maxDuration": 120
+    }
   }
 }

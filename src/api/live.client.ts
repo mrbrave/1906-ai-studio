@@ -46,3 +46,28 @@ export async function liveTurn(
     requestId,
   })) as { result: TurnResult; usage: UsageSummary };
 }
+
+export async function assessReply(
+  conversationId: string,
+  replyId: string,
+  expectedVersion: number,
+) {
+  return postJSON("/api/assessment", {
+    conversationId,
+    replyId,
+    expectedVersion,
+    requestId: replyId,
+  });
+}
+export async function continueConversation(
+  id: string,
+  sourceId: string,
+  summary: string,
+): Promise<LiveSnapshot> {
+  return (await postJSON("/api/studio", {
+    action: "continue_conversation",
+    id,
+    sourceId,
+    summary,
+  })) as LiveSnapshot;
+}
