@@ -26,6 +26,12 @@ export function ArchetypeSynthesizer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function generate() {
+    if (description.length > 4000) {
+      setError(
+        "Source input exceeds 4,000 characters. Shorten it before synthesis; nothing has been truncated.",
+      );
+      return;
+    }
     if (provider === "demo") {
       setError(
         "Choose Gemini + JEV private testing in the sidebar for AI generation, or configure your archetype manually.",
@@ -89,13 +95,23 @@ export function ArchetypeSynthesizer({
           </label>
           <textarea
             id="description"
-            maxLength={4000}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="A sceptical CMO at a B2B SaaS startup struggling with lead quality…"
           />
+          <p className="muted">
+            {description.length.toLocaleString()} / 4,000 characters · source
+            input for synthesis. The final behavioural system prompt below has a
+            separate 16,000-character limit.
+          </p>
+          {description.length > 4000 && (
+            <p role="alert">
+              Source input is too long. Your full pasted text is retained;
+              shorten it before synthesis.
+            </p>
+          )}
           <button
-            disabled={busy || !description.trim()}
+            disabled={busy || !description.trim() || description.length > 4000}
             onClick={generate}
             className="secondary"
           >
@@ -162,7 +178,6 @@ export function ArchetypeSynthesizer({
               System prompt
               <textarea
                 required
-                maxLength={16000}
                 rows={6}
                 value={draft.system_prompt}
                 onChange={(e) =>
@@ -170,10 +185,17 @@ export function ArchetypeSynthesizer({
                 }
                 placeholder="You are an enterprise CTO. You care about security, integration effort and measurable ROI…"
               />
+              <span className="muted">
+                {draft.system_prompt.length.toLocaleString()} / 16,000
+                characters · behavioural instructions used by the persona.
+              </span>
             </label>
           </fieldset>
           <div className="flex justify-end mt-6">
-            <button className="primary" disabled={busy}>
+            <button
+              className="primary"
+              disabled={busy || draft.system_prompt.length > 16000}
+            >
               Save Archetype
             </button>
           </div>

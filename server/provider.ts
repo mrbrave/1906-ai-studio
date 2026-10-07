@@ -2,6 +2,7 @@ import { HttpError } from "./http.js";
 import { nonEmpty } from "../src/api/validation.js";
 import { MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS } from "./budget.js";
 import { modelPost } from "./model-http.js";
+import { CONTINUATION_ERROR } from "./context.js";
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 export function geminiBody(
   system: string,
@@ -55,10 +56,7 @@ export async function complete(body: ReturnType<typeof geminiBody>) {
       "Gemini input count was invalid. No generation was requested.",
     );
   if (count.totalTokens > MAX_INPUT_TOKENS)
-    throw new HttpError(
-      413,
-      "This conversation exceeds the test input limit. Start a new dialogue.",
-    );
+    throw new HttpError(413, CONTINUATION_ERROR);
   return modelPost(`${base}:generateContent`, { "x-goog-api-key": key }, body);
 }
 export function completionText(raw: any): string {

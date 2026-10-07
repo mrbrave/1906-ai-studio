@@ -1,6 +1,6 @@
 # 1906.au Strategic Studio
 
-Private single-user testing with **JEV → decision state → Gemini → saved state**. The offline demo remains separate. Live mode has one shared **Studio User**, a private access code, durable Supabase storage and a remaining-usage percentage. There is no registration or multi-user billing.
+Private single-user testing with **JEV guidance → Gemini reply → saved reply → JEV completed-exchange assessment**. The offline demo remains separate. Live mode has one shared **Studio User**, a private access code, durable Supabase storage and a remaining-usage percentage. There is no registration or multi-user billing.
 
 ## Local development
 
@@ -35,11 +35,13 @@ The `10` above is an example, not an allocated amount. Increase `STUDIO_BUDGET_U
 
 `POST /api/studio` loads saved state, saves an archetype or creates a conversation. `POST /api/dialogue` accepts a conversation ID, pitch, expected version and request ID. It loads the immutable persona snapshot and intent, reserves usage, calls JEV, validates its typed answers, then sends the updated decision state to Gemini. Only a committed reply advances the conversation version. State snapshots and raw JEV answers are retained in the private operation records.
 
-The buyer's role, intent, complete bounded transcript and prior decision state reach JEV on every turn. Questions cover readiness, evidence, trust, relevance, dominant friction, sentiment, information sufficiency and resolution of the prior friction. Code normalises the readiness rubric and resolves response actions. Low confidence leads to clarification, not a fabricated confident purchase score. These are initial private-test rubrics/thresholds, not a validated model of real-world conversion.
+The buyer's immutable persona and intent, bounded working context and latest decision state reach JEV on every turn. Readiness (0–4 × 25), sentiment, friction, evidence sufficiency and confidence are independent fields. Low-confidence readiness is provisional; missing/invalid readiness is unavailable with a reason. Buyer-turn evidence is required for stance and concern resolution. Seller reassurance alone cannot establish acceptance. These private-test rubrics are not a validated model of real-world conversion.
+
+After the reply is committed, the browser calls `POST /api/assessment` with the latest reply ID and conversation version. This metered JEV-only call sees the completed exchange and updates observed telemetry without generating another reply. Pending/failed telemetry labels the previous completed assessment, and assessment can be retried independently. Stale results cannot overwrite newer versions. Pre-reply guidance remains available separately. Closing the tab before assessment requires **Assess latest reply** after unlocking; there is no background job.
 
 `/api/evaluate` is retired (410); live dialogue cannot bypass JEV. AI archetype generation also uses the ledger and access gate. OpenAI live selection has been removed for this Gemini/JEV test stage. Manual archetype configuration is still available.
 
-Demo/local histories are not imported or overwritten. Live conversations start with a new baseline. Intent is fixed per conversation; create another conversation to test a different decision. The private transcript is not silently truncated: a bounded JEV payload stops long conversations with an explicit message. New tests should restate essential context. Narrative summarisation and cross-conversation memory are deferred.
+Demo/local histories are not imported or overwritten. Live conversations start with a new baseline. Intent is fixed per conversation; create another conversation to test a different decision. The full transcript remains in Supabase. Working context uses validated, attributed, exact older paragraphs plus the latest four verbatim messages once history exceeds 12,000 serialised bytes. Every older buyer paragraph is retained; seller selection retains first/last paragraphs and condition, figure, proposal and evidence markers. The UI discloses omissions and shows the retained quotes. This is conservative extractive memory, not a semantic guarantee that every seller detail survives. Memory has a 12,000-byte bound and the complete JEV request a 48,000-byte bound. If either cannot fit, review a visible linked-continuation summary; it preserves the persona, target and original conversation. No automatic narrative summarisation or additional summariser call is used.
 
 ## Usage accounting
 
@@ -57,7 +59,7 @@ Free Gemini tier usage contributes zero to the estimate, but its request/token q
 
 ## Recovery and operator inspection
 
-Use **Refresh status** before retrying an interrupted request. A completed result is loaded without another provider call. Retry a failed message using its existing request ID. A failed turn must be resolved before sending another message in that conversation.
+Use **Refresh status** before retrying an interrupted request. A completed result is loaded without another provider call. Retry a failed message using its existing request ID. A failed dialogue turn must be resolved before sending another message in that conversation. A failed assessment keeps the completed reply and does not block a later dialogue unless its provider cost is uncertain. Drafts and pending request IDs survive reload within the same browser tab using session storage; unlock again to recover. Explicit locking clears them. Recover last request restores text without sending it. Definitively rejected, unadmitted requests can be edited; ambiguous requests keep their original ID until status is known.
 
 The private account JSON is in `studio_private.account`. Read it through the Supabase SQL Editor (administrator only). `state.operations` contains attempt IDs, model/rate versions, token usage, costs, raw receipts and request status. Costs/reservations use nanodollars. Do not share this JSON with end users or expose the table through the Data API.
 
@@ -73,9 +75,9 @@ Load server environment variables securely before running the script. The amount
 
 ## Test-stage limits and deployment
 
-The store uses one bounded JSON account with optimistic concurrency, not a multi-user schema. Limits: 100 conversations, 2,000 operations, an 8 MB serialised archive and a 24 KB JEV request payload. Reaching a limit stops new work; no financial or memory records are silently deleted. Archive before resetting a test database. Vercel functions request a 120-second maximum duration; verify that your plan/project supports it. The browser waits 125 seconds and instructs status recovery after a timeout.
+The store uses one bounded JSON account with optimistic concurrency, not a multi-user schema. Limits: 100 conversations, 2,000 operations, an 8 MB serialised archive and a 48,000-byte JEV request payload (including all questions and context), with 12,000 bytes of older structured memory. Reaching a limit stops new work; no financial or memory records are silently deleted. Archive before resetting a test database. Vercel functions request a 120-second maximum duration; verify that your plan/project supports it. The browser waits 125 seconds and instructs status recovery after a timeout.
 
-The Gemini state-conditioning prompt is tested structurally. It does not mathematically guarantee every generated reply obeys the rubric; assess live examples before expanding use. Post-generation validation is a future metered stage if those examples justify it.
+The Gemini state-conditioning prompt is tested structurally. It does not mathematically guarantee every generated reply obeys the rubric; assess live examples before expanding use. The additional post-reply JEV assessment is a simulation feedback loop, not independent buyer validation. It adds one JEV call and its latency per completed exchange; it has its own reservation and receipt. Provider pricing and the allocation are unchanged.
 
 Tests cover orchestration order, state continuity, budget arithmetic, private projections, duplicate/retry handling, concurrency, failure charging, access checks and browser workflows. Native-Node compiled-route checks retain the ESM import regression protection. Real provider access and a live Supabase migration cannot be verified without configured credentials.
 
@@ -89,3 +91,7 @@ Official references verified 5 October 2026:
 - https://ai.google.dev/gemini-api/docs/tokens
 - https://ai.google.dev/gemini-api/docs/pricing
 - https://supabase.com/docs/guides/database/functions
+
+## Evaluation and continuity review
+
+See [the implementation review](docs/studio-continuity-review.md) for verified causes, Synthetic Rob replay evidence, bounded-memory trade-offs, test results and remaining live-provider checks. Existing stores require no SQL migration or new environment variables for this change. A protected preview must use isolated test storage before provider testing.

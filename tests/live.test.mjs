@@ -113,7 +113,7 @@ test("invalid JEV answer records its usage, blocks Gemini and does not advance s
   const repo = new MemoryRepository(),
     cid = await conversation(repo);
   const raw = jevResponse();
-  raw.answers.friction.choice = "fabricated";
+  raw.model = "unexpected-model";
   await assert.rejects(
     runOperation("dialogue", request(cid), repo, {
       jev: async () => raw,
@@ -280,7 +280,7 @@ test("archetype generation is metered and repeated request IDs reuse the saved r
   assert.equal(calls, 1);
   assert.equal(totals(repo.state).spent, 4875000);
 });
-test("low confidence expresses uncertainty and does not silently resolve old objections", async () => {
+test("limited sufficiency labels readiness provisional and does not silently resolve old objections", async () => {
   const repo = new MemoryRepository(),
     cid = await conversation(repo),
     c = repo.state.conversations[0];
@@ -291,10 +291,13 @@ test("low confidence expresses uncertainty and does not silently resolve old obj
   const raw = jevResponse("none");
   raw.answers.sufficient.noul = 0.4;
   const d = parseDecision(raw, c);
-  assert.equal(d.state.readinessIndex, null);
-  assert.equal(d.state.responseAction, "clarify");
+  assert.equal(d.state.readinessIndex, 50);
+  assert.equal(d.state.status, "provisional");
   assert.deepEqual(d.state.unresolvedObjections, ["implementation"]);
-  assert.throws(() => jevBody(c, [], "x".repeat(25000)), /memory limit/);
+  assert.throws(
+    () => jevBody(c, [], "x".repeat(50000)),
+    /bounded working context/,
+  );
 });
 test("Supabase adapter uses only authenticated RPC and CAS conflicts are preserved", async () => {
   process.env.SUPABASE_URL = "https://example.supabase.co";

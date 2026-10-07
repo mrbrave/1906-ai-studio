@@ -7,14 +7,51 @@ export interface ConversationIntent {
 export interface DecisionState {
   version: number;
   readinessIndex: number | null;
-  confidence: number;
+  confidence: number | null;
   sentiment: string;
   friction: string;
   responseAction:
-    "clarify" | "request_evidence" | "explore" | "decline" | "agree_next_step";
+    | "clarify"
+    | "request_evidence"
+    | "explore"
+    | "decline"
+    | "agree_next_step"
+    | "discuss_conditions";
   unresolvedObjections: string[];
   jevModel: string;
   rubricVersion: string;
+  phase?: "pre_reply" | "post_reply";
+  evaluatedThrough?: string;
+  status?: "complete" | "provisional" | "unavailable";
+  unavailableReason?: string;
+  readinessConfidence?: number | null;
+  sentimentConfidence?: number | null;
+  frictionConfidence?: number | null;
+  evidenceSufficiency?: number | null;
+  stance?: string;
+  stanceConfidence?: number | null;
+  remainingConditions?: string[];
+  missingInformation?: string[];
+  concerns?: Concern[];
+}
+export interface Concern {
+  category: string;
+  status: "active" | "resolved" | "reopened";
+  turnId: string;
+  evidenceTurnId?: string;
+}
+export interface MemoryEntry {
+  turnId: string;
+  speaker: "user" | "assistant";
+  kind: "seller_claim" | "buyer_statement";
+  quote: string;
+}
+export interface ConversationMemory {
+  schemaVersion: 1;
+  version: number;
+  lastSummarisedTurnId: string;
+  entries: MemoryEntry[];
+  omittedSellerParagraphs: number;
 }
 export interface LiveConversation {
   id: string;
@@ -22,6 +59,10 @@ export interface LiveConversation {
   intent: ConversationIntent;
   version: number;
   state: DecisionState | null;
+  observedState?: DecisionState | null;
+  memory?: ConversationMemory;
+  continuationOf?: string;
+  continuationSummary?: string;
 }
 export interface UsageSummary {
   remainingPercentage: number;
@@ -42,6 +83,7 @@ export interface LiveSnapshot {
 export interface TurnResult {
   text: string;
   telemetry: Telemetry;
+  replyId?: string;
   state: DecisionState;
   version: number;
 }

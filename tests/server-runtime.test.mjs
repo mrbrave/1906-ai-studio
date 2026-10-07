@@ -18,8 +18,8 @@ test("compiled private API routes load in native Node ESM and enforce access", (
     assert.equal(config.error, undefined);
     const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
     const program = ts.createProgram(
-      ["dialogue", "archetype", "evaluate", "studio"].map((name) =>
-        join(root, "api", `${name}.ts`),
+      ["dialogue", "archetype", "evaluate", "studio", "assessment"].map(
+        (name) => join(root, "api", `${name}.ts`),
       ),
       {
         ...parsed.options,
@@ -51,6 +51,7 @@ test("compiled private API routes load in native Node ESM and enforce access", (
       import archetype from "./api/archetype.js";
       import evaluate from "./api/evaluate.js";
       import studio from "./api/studio.js";
+      import assessment from "./api/assessment.js";
       async function invoke(handler, method, body) {
         let data;
         const response = { setHeader() {}, end(value) { data = JSON.parse(value); } };
@@ -58,13 +59,13 @@ test("compiled private API routes load in native Node ESM and enforce access", (
         return { status: response.statusCode, data };
       }
       delete process.env.STUDIO_ENABLE_LIVE;
-      for (const handler of [dialogue, archetype, evaluate, studio]) {
+      for (const handler of [dialogue, archetype, evaluate, studio, assessment]) {
         assert.equal((await invoke(handler, "GET")).status, 405);
         assert.equal((await invoke(handler, "POST", {})).status, 503);
       }
       process.env.STUDIO_ENABLE_LIVE = "true";
       process.env.STUDIO_ACCESS_TOKEN = "private-test-access-code-32-characters";
-      for (const handler of [dialogue, archetype, evaluate, studio]) {
+      for (const handler of [dialogue, archetype, evaluate, studio, assessment]) {
         assert.equal((await invoke(handler, "POST", {})).status, 401);
       }
     `;
