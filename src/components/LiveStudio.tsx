@@ -1,11 +1,20 @@
+import { PersonaManager } from "./PersonaManager";
+import { usePersonaNavigation } from "./usePersonaNavigation";
+import {
+  personaEditorSession,
+  type PersonaEditorSession,
+} from "../services/personaEditor";
+import { personaRevision } from "../services/personaManagement";
 import { useRef, useState } from "react";
 import type { ArchetypeDraft } from "../api/contracts";
-import type { Message } from "../types/database.types";
+import type { Archetype, Message } from "../types/database.types";
 import type { ConversationIntent, LiveSnapshot } from "../types/live";
 import {
   liveSnapshot,
   createConversation,
   saveLiveArchetype,
+  updateLivePersona,
+  archiveLivePersona,
   liveTurn,
   assessReply,
   continueConversation,
@@ -36,7 +45,69 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   }
   const refreshSequence = useRef(0);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "new" | "create">("new");
+  const [view, setView] = useState<"chat" | "new" | "create" | "personas">(
+    "new",
+  );
+  const [editor, setEditor] = useState<PersonaEditorSession>(() =>
+    personaEditorSession("create"),
+  );
+  const { canLeave, setEditorState, editorBusy } = usePersonaNavigation();
+  const personaRequest = useRef<{ payload: string; id: string } | null>(null);
+  function navigate(work: () => void) {
+    if (!lock.current && canLeave()) {
+      work();
+      setMobile(false);
+    }
+  }
+  function openEditor(mode: PersonaEditorSession["mode"], persona?: Archetype) {
+    navigate(() => {
+      setEditor(personaEditorSession(mode, persona));
+      setView("create");
+      setDrawer(false);
+    });
+  }
+  function mutationId(payload: unknown) {
+    const serialised = JSON.stringify(payload);
+    if (personaRequest.current?.payload !== serialised)
+      personaRequest.current = { payload: serialised, id: crypto.randomUUID() };
+    return personaRequest.current.id;
+  }
+  async function managePersona(work: () => Promise<LiveSnapshot>) {
+    if (lock.current)
+      throw new Error(
+        "Wait for the current Studio request to finish, then try again.",
+      );
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    ++refreshSequence.current;
+    try {
+      const next = await work();
+      ++refreshSequence.current;
+      setSnapshot(next);
+    } catch (e) {
+      if (e instanceof ResponseError && e.status === 409)
+        await refresh().catch(() => {});
+      throw e;
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  async function savePersona(draft: ArchetypeDraft) {
+    await managePersona(() =>
+      editor.mode === "edit" && editor.persona
+        ? updateLivePersona(
+            editor.persona.id,
+            personaRevision(editor.persona),
+            draft,
+            mutationId({ editor: editor.key, draft }),
+          )
+        : saveLiveArchetype(editor.key, draft),
+    );
+    if (editor.mode !== "edit") setArchetypeId(editor.key);
+    setView("personas");
+  }
   const [drawer, setDrawer] = useState(false),
     [mobile, setMobile] = useState(false);
   const [archetypeId, setArchetypeId] = useState("");
@@ -72,6 +143,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     }
   }
   function exit() {
+    if (lock.current || !canLeave()) return;
     setStudioAccessCode("");
     setSnapshot(null);
     setCode("");
@@ -84,7 +156,9 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
       try {
         const next = await refresh();
         setCode("");
-        setArchetypeId(next.data.archetypes[0]?.id ?? "");
+        setArchetypeId(
+          next.data.archetypes.find((a) => !a.archived_at)?.id ?? "",
+        );
         const first =
           pending.current?.conversationId ?? next.conversations[0]?.id ?? null;
         setActiveId(first);
@@ -216,6 +290,9 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
       </main>
     );
   const c = snapshot.conversations.find((c) => c.id === activeId);
+  const activePersonas = snapshot.data.archetypes.filter((a) => !a.archived_at);
+  const selectedPersona =
+    activePersonas.find((a) => a.id === archetypeId) ?? activePersonas[0];
   const messages = snapshot.data.messages.filter(
     (m) => m.conversation_id === activeId,
   );
@@ -242,26 +319,32 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         </button>
         <Sidebar
           data={snapshot.data}
-          activeId={activeId}
+          disabled={busy || editorBusy}
+          conversationPersonas={Object.fromEntries(
+            snapshot.conversations.map((c) => [c.id, c.archetype]),
+          )}
+          activeId={view === "chat" ? activeId : null}
           provider="gemini"
           usage={snapshot.usage}
           onProvider={(p) => {
             if (p === "demo") exit();
           }}
-          onNew={() => {
-            setView("new");
-            setMobile(false);
-          }}
-          onCreate={() => {
-            setView("create");
-            setMobile(false);
-          }}
-          onSelect={(id) => {
-            setActiveId(id);
-            setView("chat");
-            setMobile(false);
-            setDrawer(false);
-          }}
+          onNew={() => navigate(() => setView("new"))}
+          onCreate={() => openEditor("create")}
+          onManage={() =>
+            navigate(() => {
+              setView("personas");
+              setDrawer(false);
+            })
+          }
+          onSelect={(id) =>
+            navigate(() => {
+              setActiveId(id);
+              setView("chat");
+              setMobile(false);
+              setDrawer(false);
+            })
+          }
         />
       </div>
       <main className="workspace">
@@ -295,7 +378,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           >
             Refresh status
           </button>
-          <button disabled={busy} onClick={exit}>
+          <button disabled={busy || editorBusy} onClick={exit}>
             Lock Studio
           </button>
         </div>
@@ -332,18 +415,42 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         )}
         {view === "create" ? (
           <ArchetypeSynthesizer
+            key={editor.key}
+            initialDraft={editor.draft}
+            mode={editor.mode}
+            onStateChange={setEditorState}
             provider="gemini"
-            onBack={() => setView(c ? "chat" : "new")}
+            onBack={() => navigate(() => setView("personas"))}
             onUsageChanged={() =>
               void refresh().catch((e) => setError(e.message))
             }
-            onSave={(draft: ArchetypeDraft) =>
-              void act(async () => {
-                const id = crypto.randomUUID();
-                setSnapshot(await saveLiveArchetype(id, draft));
-                setArchetypeId(id);
-                setView("new");
-              })
+            onSave={savePersona}
+          />
+        ) : view === "personas" ? (
+          <PersonaManager
+            personas={snapshot.data.archetypes}
+            onCreate={() => openEditor("create")}
+            onEdit={(a) => openEditor("edit", a)}
+            onDuplicate={(a) => openEditor("duplicate", a)}
+            onMenu={() => setMobile(true)}
+            onStart={(a) => {
+              setArchetypeId(a.id);
+              setView("new");
+            }}
+            onArchive={(a, archived) =>
+              managePersona(() =>
+                archiveLivePersona(
+                  a.id,
+                  personaRevision(a),
+                  archived,
+                  mutationId({
+                    id: a.id,
+                    revision: personaRevision(a),
+                    archived,
+                    updatedAt: a.updated_at,
+                  }),
+                ),
+              )
             }
           />
         ) : view === "new" || !c ? (
@@ -357,14 +464,11 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               className="intent-form"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (!selectedPersona) return;
                 void act(async () => {
                   const id = crypto.randomUUID();
                   setSnapshot(
-                    await createConversation(
-                      id,
-                      archetypeId || snapshot.data.archetypes[0].id,
-                      intent,
-                    ),
+                    await createConversation(id, selectedPersona!.id, intent),
                   );
                   setActiveId(id);
                   setView("chat");
@@ -373,12 +477,16 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               }}
             >
               <label>
-                Perspective
+                Persona
                 <select
-                  value={archetypeId || snapshot.data.archetypes[0].id}
+                  disabled={!selectedPersona}
+                  value={selectedPersona?.id ?? ""}
                   onChange={(e) => setArchetypeId(e.target.value)}
                 >
-                  {snapshot.data.archetypes.map((a) => (
+                  {!selectedPersona && (
+                    <option value="">No active personas</option>
+                  )}
+                  {activePersonas.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.name} · {a.role}
                     </option>
@@ -431,7 +539,13 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                 proposition. This intent stays fixed for the conversation. Start
                 a new dialogue to test a different decision.
               </p>
-              <button className="primary" disabled={busy}>
+              {!selectedPersona && (
+                <p className="persona-note">
+                  Create a persona or restore one from Manage personas to start
+                  a conversation.
+                </p>
+              )}
+              <button className="primary" disabled={busy || !selectedPersona}>
                 Start dialogue
               </button>
             </form>

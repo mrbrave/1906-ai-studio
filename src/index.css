@@ -857,3 +857,211 @@ h3 {
   background: #e1f3fa;
   font-size: 0.85rem;
 }
+
+/* Persona creation and management use the existing Studio palette and borders. */
+.persona-manager {
+  overflow: auto;
+  min-height: 0;
+}
+.persona-manager-content {
+  max-width: 1200px;
+  margin: auto;
+  padding: 36px clamp(20px, 4vw, 48px);
+}
+.persona-list-heading,
+.persona-card-title {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: space-between;
+}
+.persona-list-heading h2 {
+  font-size: 28px;
+  font-weight: 850;
+  letter-spacing: -1px;
+  margin-bottom: 10px;
+}
+.persona-list-heading p,
+.persona-empty p {
+  font-size: 13px;
+}
+.persona-list-heading > .primary {
+  flex-shrink: 0;
+}
+.persona-methods {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 24px 0;
+}
+.persona-methods [aria-pressed="true"] {
+  background: #e1f3fa;
+  color: #01537e;
+  box-shadow: 3px 3px 0 #01537e26;
+}
+.persona-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.persona-card {
+  min-width: 0;
+  padding: 24px;
+  background: #faf9f6;
+  border: 3px solid #1a1a1a;
+  border-radius: 20px 28px 14px 20px;
+  box-shadow: 5px 5px 0 #01537e20;
+  overflow-wrap: anywhere;
+}
+.persona-card-title {
+  justify-content: flex-start;
+}
+.persona-card-title h3 {
+  font-size: 16px;
+  font-weight: 800;
+}
+.persona-card-title p {
+  margin-top: 5px;
+  font-size: 12px;
+}
+.persona-card-title small {
+  font-size: 11px;
+}
+.persona-card-summary {
+  margin: 20px 0;
+  font-size: 13px;
+  line-height: 1.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.persona-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  margin-top: 22px;
+}
+.persona-card-actions .primary {
+  width: 100%;
+}
+.persona-preview {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.persona-preview summary,
+.persona-section summary {
+  cursor: pointer;
+  font-weight: 800;
+  color: #01537e;
+}
+.persona-preview dt {
+  font-weight: 800;
+  margin-top: 14px;
+}
+.persona-preview dd {
+  white-space: pre-wrap;
+}
+.persona-preview ul {
+  list-style: disc;
+  padding-left: 18px;
+}
+.persona-preview > details {
+  margin-top: 16px;
+}
+.persona-instructions {
+  white-space: pre-wrap;
+  margin-top: 12px;
+}
+.persona-note {
+  padding: 16px;
+  margin: 22px 0;
+  border-left: 3px solid #01537e;
+  background: #e1f3fa;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.persona-empty {
+  padding: 36px 0;
+}
+.persona-empty h3 {
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.persona-fields {
+  min-width: 0;
+}
+.persona-section {
+  border-top: 2px solid #dcdad2;
+  padding: 28px 0;
+}
+.persona-section h3 {
+  font-size: 17px;
+  font-weight: 800;
+}
+.persona-section > p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 10px 0 22px;
+}
+.persona-section .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.field-hint {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+.persona-prompt {
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+}
+.persona-prompt textarea {
+  width: 100%;
+  display: block;
+  margin-top: 10px;
+  border: 2px solid #1a1a1a;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+.persona-save {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px 0;
+}
+.ai-box .muted {
+  color: #bddbe8;
+}
+.ai-box label {
+  font-size: 12px;
+  font-weight: 800;
+}
+summary:focus-visible {
+  outline: 3px solid #0271a3;
+  outline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .persona-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .persona-section .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .persona-card-title .avatar {
+    display: grid;
+  }
+  .persona-section .budget-options {
+    gap: 6px;
+  }
+  .persona-section .budget-options label {
+    padding: 10px 6px;
+  }
+}

@@ -1,3 +1,15 @@
+import { PersonaManager } from "./components/PersonaManager";
+import { usePersonaNavigation } from "./components/usePersonaNavigation";
+import {
+  personaEditorSession,
+  type PersonaEditorSession,
+} from "./services/personaEditor";
+import {
+  archivePersona,
+  editPersona,
+  freezeDemoPersonas,
+  personaRevision,
+} from "./services/personaManagement";
 import { LiveStudio } from "./components/LiveStudio";
 import { useRef, useState } from "react";
 import { X, ArrowLeft } from "lucide-react";
@@ -5,7 +17,11 @@ import { Sidebar } from "./components/Sidebar";
 import { ChatWorkspace } from "./components/ChatWorkspace";
 import { TelemetryDrawer } from "./components/TelemetryDrawer";
 import { ArchetypeSynthesizer } from "./components/ArchetypeSynthesizer";
-import { loadStudio, saveStudio } from "./services/storageService";
+import {
+  loadStudio,
+  readSavedStudio,
+  saveStudio,
+} from "./services/storageService";
 import { runDialogueTurn } from "./services/llmService";
 import type { ArchetypeDraft } from "./api/contracts";
 import type {
@@ -46,9 +62,26 @@ function DemoApp({ onLive }: { onLive: () => void }) {
   const [activeId, setActiveId] = useState<string | null>(
     loaded.data?.conversations[0]?.id ?? null,
   );
-  const [view, setView] = useState<"chat" | "create" | "new">(
+  const [view, setView] = useState<"chat" | "create" | "new" | "personas">(
     activeId ? "chat" : "new",
   );
+  const [editor, setEditor] = useState<PersonaEditorSession>(() =>
+    personaEditorSession("create"),
+  );
+  const { canLeave, setEditorState, editorBusy } = usePersonaNavigation();
+  function navigate(work: () => void) {
+    if (canLeave()) {
+      work();
+      setMobileNav(false);
+    }
+  }
+  function openEditor(mode: PersonaEditorSession["mode"], persona?: Archetype) {
+    navigate(() => {
+      setEditor(personaEditorSession(mode, persona));
+      setView("create");
+      setDrawer(false);
+    });
+  }
   const [provider, setProvider] = useState<Provider>("demo");
   const [drawer, setDrawer] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
@@ -56,8 +89,16 @@ function DemoApp({ onLive }: { onLive: () => void }) {
   const lock = useRef(false);
   const [error, setError] = useState(loaded.error);
   const [storageError, setStorageError] = useState("");
-  function update(fn: (d: StudioData) => StudioData) {
-    const next = fn(dataRef.current!);
+  function update(fn: (d: StudioData) => StudioData, fresh = false) {
+    const current =
+      fresh && !storageError
+        ? (readSavedStudio() ?? dataRef.current!)
+        : dataRef.current!;
+    if (fresh) {
+      dataRef.current = current;
+      setData(current);
+    }
+    const next = fn(current);
     dataRef.current = next;
     setData(next);
     try {
@@ -74,6 +115,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
       id: crypto.randomUUID(),
       user_id: data!.users[0].id,
       archetype_id: archetype.id,
+      archetype_snapshot: structuredClone(archetype),
       title: `Dialogue with ${archetype.name}`,
       created_at: now(),
       updated_at: now(),
@@ -86,21 +128,39 @@ function DemoApp({ onLive }: { onLive: () => void }) {
     setError("");
   }
   function saveArchetype(draft: ArchetypeDraft) {
-    const a: Archetype = {
-      ...draft,
-      id: crypto.randomUUID(),
-      user_id: data!.users[0].id,
-      avatar: "🎯",
-      created_at: now(),
-    };
-    update((d) => ({ ...d, archetypes: [...d.archetypes, a] }));
-    start(a);
+    if (editor.mode === "edit" && editor.persona) {
+      const persona = editor.persona;
+      update(
+        (d) =>
+          editPersona(
+            freezeDemoPersonas(d, persona.id),
+            persona.id,
+            personaRevision(persona),
+            draft,
+            now(),
+          ),
+        true,
+      );
+    } else {
+      const a: Archetype = {
+        ...draft,
+        id: editor.key,
+        user_id: data!.users[0].id,
+        avatar: editor.persona?.avatar ?? "🎯",
+        created_at: now(),
+        profileRevision: 1,
+      };
+      update((d) => ({ ...d, archetypes: [...d.archetypes, a] }), true);
+    }
+    setView("personas");
   }
   async function send(text: string, retry?: Message) {
     if (lock.current || !activeId) return;
     const snapshot = dataRef.current!;
     const c = snapshot.conversations.find((c) => c.id === activeId)!;
-    const a = snapshot.archetypes.find((a) => a.id === c.archetype_id)!;
+    const a =
+      c.archetype_snapshot ??
+      snapshot.archetypes.find((a) => a.id === c.archetype_id)!;
     const mode = retry?.provider ?? provider;
     if (mode === "demo" && snapshot.users[0].compute_credits < 15) {
       setError(
@@ -209,9 +269,9 @@ function DemoApp({ onLive }: { onLive: () => void }) {
       </main>
     );
   const conversation = data.conversations.find((c) => c.id === activeId);
-  const archetype = data.archetypes.find(
-    (a) => a.id === conversation?.archetype_id,
-  );
+  const archetype =
+    conversation?.archetype_snapshot ??
+    data.archetypes.find((a) => a.id === conversation?.archetype_id);
   const messages = data.messages.filter((m) => m.conversation_id === activeId);
   const latest = [...messages].reverse().find((m) => m.role === "assistant");
   // Never show the previous turn's score while the new reply is still pending or failed.
@@ -233,24 +293,33 @@ function DemoApp({ onLive }: { onLive: () => void }) {
         </button>
         <Sidebar
           data={data}
+          disabled={editorBusy}
           activeId={view === "chat" ? activeId : null}
           provider={provider}
-          onProvider={(p) => (p === "demo" ? setProvider(p) : onLive())}
-          onNew={() => {
-            setView("new");
-            setDrawer(false);
-            setMobileNav(false);
-          }}
-          onCreate={() => {
-            setView("create");
-            setDrawer(false);
-            setMobileNav(false);
-          }}
-          onSelect={(id) => {
-            setActiveId(id);
-            setView("chat");
-            setMobileNav(false);
-          }}
+          onProvider={(p) =>
+            navigate(() => (p === "demo" ? setProvider(p) : onLive()))
+          }
+          onNew={() =>
+            navigate(() => {
+              setView("new");
+              setDrawer(false);
+              setMobileNav(false);
+            })
+          }
+          onCreate={() => openEditor("create")}
+          onManage={() =>
+            navigate(() => {
+              setView("personas");
+              setDrawer(false);
+            })
+          }
+          onSelect={(id) =>
+            navigate(() => {
+              setActiveId(id);
+              setView("chat");
+              setMobileNav(false);
+            })
+          }
         />
       </div>
       {mobileNav && (
@@ -268,9 +337,29 @@ function DemoApp({ onLive }: { onLive: () => void }) {
         )}
         {view === "create" ? (
           <ArchetypeSynthesizer
+            key={editor.key}
+            mode={editor.mode}
+            initialDraft={editor.draft}
+            onStateChange={setEditorState}
             provider={provider}
             onSave={saveArchetype}
-            onBack={() => setView(activeId ? "chat" : "new")}
+            onBack={() => navigate(() => setView("personas"))}
+          />
+        ) : view === "personas" ? (
+          <PersonaManager
+            personas={data.archetypes}
+            onCreate={() => openEditor("create")}
+            onEdit={(a) => openEditor("edit", a)}
+            onDuplicate={(a) => openEditor("duplicate", a)}
+            onStart={start}
+            onMenu={() => setMobileNav(true)}
+            onArchive={(a, archived) =>
+              update(
+                (d) =>
+                  archivePersona(d, a.id, personaRevision(a), archived, now()),
+                true,
+              )
+            }
           />
         ) : view === "new" || !archetype ? (
           <div className="new-dialogue">
@@ -284,23 +373,31 @@ function DemoApp({ onLive }: { onLive: () => void }) {
               with better questions.
             </h1>
             <p className="muted">
-              Choose a perspective. Pressure-test your next proposition.
+              Choose a persona. Pressure-test your next proposition.
             </p>
+            {!data.archetypes.some((a) => !a.archived_at) && (
+              <p className="persona-note">
+                No active personas. Create a persona or restore one from Manage
+                personas.
+              </p>
+            )}
             <div className="archetype-grid">
-              {data.archetypes.map((a) => (
-                <button
-                  key={a.id}
-                  onClick={() => start(a)}
-                  className="archetype-card"
-                >
-                  <span className="text-4xl">{a.avatar}</span>
-                  <h2>{a.name}</h2>
-                  <p>{a.role}</p>
-                  <small>
-                    {a.budget_sensitivity} budget sensitivity <span>↗</span>
-                  </small>
-                </button>
-              ))}
+              {data.archetypes
+                .filter((a) => !a.archived_at)
+                .map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => start(a)}
+                    className="archetype-card"
+                  >
+                    <span className="text-4xl">{a.avatar}</span>
+                    <h2>{a.name}</h2>
+                    <p>{a.role}</p>
+                    <small>
+                      {a.budget_sensitivity} budget sensitivity <span>↗</span>
+                    </small>
+                  </button>
+                ))}
             </div>
           </div>
         ) : (

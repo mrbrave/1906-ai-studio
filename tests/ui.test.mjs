@@ -177,7 +177,7 @@ test("over-limit pasted synthesis and dialogue text remains visible and cannot b
   fireEvent.change(input, { target: { value: "x".repeat(4001) } });
   assert.equal(input.value.length, 4001);
   assert.equal(
-    screen.getByRole("button", { name: /Synthesize/ }).disabled,
+    screen.getByRole("button", { name: "Generate draft" }).disabled,
     true,
   );
   cleanup();
@@ -298,5 +298,262 @@ test("private Studio unlocks, fixes intent, shows percentage and preserves reque
     cleanup();
     globalThis.fetch = original;
     window.location.hash = "";
+  }
+});
+
+test("persona manager creates, edits, duplicates and archives while demo conversations keep their original buyer", async () => {
+  localStorage.clear();
+  window.location.hash = "";
+  const originalConfirm = window.confirm;
+  window.confirm = () => true;
+  try {
+    render(React.createElement(App));
+    click(/Alex Vance/);
+    const old = JSON.parse(localStorage.getItem(STORAGE_KEY)).conversations[0];
+    click("Manage personas");
+    const alex = screen.getByRole("article", { name: "Alex Vance" });
+    fireEvent.click(within(alex).getByRole("button", { name: "Edit" }));
+    change("Full name", "Alex Updated");
+    change("Goals", "One edited goal\nAnother goal");
+    click("Save persona");
+    await screen.findByRole("heading", { name: "Your personas" });
+    let data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    assert.equal(data.archetypes[0].profileRevision, 2);
+    assert.equal(data.archetypes[0].profile.provenance.goals, "provided");
+    assert.deepEqual(data.conversations[0], old);
+    let card = screen.getByRole("article", { name: "Alex Updated" });
+    fireEvent.click(within(card).getByRole("button", { name: "Duplicate" }));
+    assert.equal(
+      screen.getByLabelText("Full name").value,
+      "Alex Updated (copy)",
+    );
+    click("Save persona");
+    await screen.findByRole("article", { name: "Alex Updated (copy)" });
+    card = screen.getByRole("article", { name: "Alex Updated" });
+    fireEvent.click(within(card).getByRole("button", { name: "Archive" }));
+    await waitFor(() =>
+      assert.equal(
+        screen.queryByRole("article", { name: "Alex Updated" }),
+        null,
+      ),
+    );
+    click("New Strategic Dialogue");
+    assert.equal(
+      screen.queryByRole("button", { name: /Alex Updated VP/ }),
+      null,
+    );
+    click(/Dialogue with Alex Vance/);
+    assert.ok(screen.getByRole("heading", { name: "Alex Vance" }));
+    click("Manage personas");
+    click("Archived (1)");
+    fireEvent.click(
+      within(screen.getByRole("article", { name: "Alex Updated" })).getByRole(
+        "button",
+        { name: "Restore" },
+      ),
+    );
+    await screen.findByText("No archived personas");
+    click(/^Active \(/);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Create persona", exact: true })[0],
+    );
+    click("Build manually");
+    change("Full name", "Jamie Test");
+    change("Role", "Founder");
+    change("Industry", "Professional services");
+    click("Save persona");
+    await screen.findByRole("article", { name: "Jamie Test" });
+    data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    assert.match(
+      data.archetypes.find((a) => a.name === "Jamie Test").system_prompt,
+      /Professional services/,
+    );
+    cleanup();
+    render(React.createElement(App));
+    click("Manage personas");
+    assert.ok(screen.getByRole("article", { name: "Jamie Test" }));
+  } finally {
+    cleanup();
+    window.confirm = originalConfirm;
+  }
+});
+
+test("persona form retains failed saves and oversized text, and replacement requires consent", async () => {
+  const { ArchetypeSynthesizer } =
+    await import("../src/components/ArchetypeSynthesizer.tsx");
+  const original = globalThis.fetch,
+    confirm = window.confirm;
+  let calls = 0,
+    saves = 0,
+    saved;
+  globalThis.fetch = async () => {
+    calls++;
+    return Response.json({
+      result: {
+        name: "Generated buyer",
+        role: "Buyer",
+        budget_sensitivity: "Low",
+        system_prompt: "Keep the generated voice.",
+      },
+    });
+  };
+  window.confirm = () => false;
+  try {
+    render(
+      React.createElement(ArchetypeSynthesizer, {
+        provider: "gemini",
+        onBack() {},
+        async onSave(d) {
+          saves++;
+          saved = d;
+          throw new Error("Storage unavailable");
+        },
+      }),
+    );
+    change("Full name", "Manual buyer");
+    change("Role", "Growth lead");
+    change("Goals", "Keep my goal");
+    change("Target buyer description", "A practical buyer");
+    click("Generate draft");
+    assert.equal(calls, 0);
+    assert.equal(screen.getByLabelText("Goals").value, "Keep my goal");
+    window.confirm = () => true;
+    click("Generate draft");
+    await screen.findByText(/Draft generated/);
+    assert.equal(saves, 0);
+    assert.equal(screen.getByLabelText("Full name").value, "Generated buyer");
+    change("Background", "x".repeat(2401));
+    click("Save persona");
+    await screen.findByRole("alert");
+    assert.equal(saves, 0);
+    assert.equal(screen.getByLabelText("Background").value.length, 2401);
+    change("Background", "Reviewable background");
+    click("Save persona");
+    await screen.findByText("Storage unavailable");
+    assert.equal(
+      screen.getByLabelText("Background").value,
+      "Reviewable background",
+    );
+    assert.equal(saved.system_prompt, "Keep the generated voice.");
+    assert.equal(saved.profile.provenance.background, "provided");
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    window.confirm = confirm;
+  }
+});
+
+test("unsaved persona navigation is guarded and stale demo edits cannot overwrite another tab", async () => {
+  const confirm = window.confirm;
+  window.confirm = () => false;
+  localStorage.clear();
+  window.location.hash = "";
+  try {
+    render(React.createElement(App));
+    click("Create persona");
+    change("Full name", "Keep this draft");
+    click("Manage personas");
+    assert.equal(screen.getByLabelText("Full name").value, "Keep this draft");
+    window.confirm = () => true;
+    click("Manage personas");
+    const alex = screen.getByRole("article", { name: "Alex Vance" });
+    fireEvent.click(within(alex).getByRole("button", { name: "Edit" }));
+    change("Full name", "My stale edit");
+    const { createInitialData } =
+      await import("../src/services/storageService.ts");
+    const external = createInitialData(localStorage);
+    external.archetypes[0].name = "Changed in another tab";
+    external.archetypes[0].profileRevision = 2;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(external));
+    click("Save persona");
+    await screen.findByText(/This persona changed in another tab/);
+    assert.equal(screen.getByLabelText("Full name").value, "My stale edit");
+    assert.equal(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)).archetypes[0].name,
+      "Changed in another tab",
+    );
+    click("Back to personas");
+    assert.ok(screen.getByRole("article", { name: "Changed in another tab" }));
+  } finally {
+    cleanup();
+    window.confirm = confirm;
+  }
+});
+
+test("private persona saves retry with the same identity and stale edits keep their draft", async () => {
+  const { MemoryRepository, configure } = await import("./helpers.mjs");
+  const { studio } = await import("../server/studio.ts");
+  configure();
+  const repo = new MemoryRepository();
+  const original = globalThis.fetch,
+    confirm = window.confirm;
+  const requests = [];
+  let loseCreateResponse = true;
+  window.confirm = () => true;
+  window.location.hash = "#private";
+  sessionStorage.clear();
+  globalThis.fetch = async (url, opts) => {
+    const b = JSON.parse(opts.body);
+    requests.push(b);
+    try {
+      const result = await studio(b, repo);
+      if (b.action === "save_archetype" && loseCreateResponse) {
+        loseCreateResponse = false;
+        throw new Error("Save response lost");
+      }
+      return Response.json(result);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: e.status ?? 503 });
+    }
+  };
+  try {
+    render(React.createElement(App));
+    change("Studio access code", "private-test-access-code-32-characters");
+    click("Open Studio");
+    await screen.findByRole("heading", { name: "New strategic dialogue" });
+    assert.ok(screen.getByLabelText("Persona"));
+    click("Create persona");
+    click("Build manually");
+    change("Full name", "New private buyer");
+    change("Role", "Founder");
+    click("Save persona");
+    await screen.findByText("Save response lost");
+    assert.equal(screen.getByLabelText("Full name").value, "New private buyer");
+    click("Save persona");
+    await screen.findByRole("heading", { name: "Your personas" });
+    const creates = requests.filter((r) => r.action === "save_archetype");
+    assert.equal(creates[0].id, creates[1].id);
+    assert.equal(
+      repo.state.data.archetypes.filter((a) => a.name === "New private buyer")
+        .length,
+      1,
+    );
+    const card = screen.getByRole("article", { name: "New private buyer" });
+    fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    change("Role", "My revised role");
+    const stored = repo.state.data.archetypes.find(
+      (a) => a.name === "New private buyer",
+    );
+    stored.profileRevision = 2;
+    stored.role = "Other tab's role";
+    click("Save persona");
+    await screen.findByText(/This persona changed in another tab/);
+    assert.equal(screen.getByLabelText("Role").value, "My revised role");
+    assert.equal(
+      repo.state.data.archetypes.find((a) => a.id === stored.id).role,
+      "Other tab's role",
+    );
+    click("Back to personas");
+    assert.ok(
+      within(
+        screen.getByRole("article", { name: "New private buyer" }),
+      ).getByText("Other tab's role"),
+    );
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+    window.confirm = confirm;
+    window.location.hash = "";
+    sessionStorage.clear();
   }
 });

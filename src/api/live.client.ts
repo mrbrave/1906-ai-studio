@@ -47,6 +47,35 @@ export async function liveTurn(
   })) as { result: TurnResult; usage: UsageSummary };
 }
 
+export async function updateLivePersona(
+  id: string,
+  expectedRevision: number,
+  draft: ArchetypeDraft,
+  requestId: string,
+): Promise<LiveSnapshot> {
+  return (await postJSON("/api/studio", {
+    action: "update_archetype",
+    id,
+    expectedRevision,
+    draft,
+    requestId,
+  })) as LiveSnapshot;
+}
+export async function archiveLivePersona(
+  id: string,
+  expectedRevision: number,
+  archived: boolean,
+  requestId: string,
+): Promise<LiveSnapshot> {
+  return (await postJSON("/api/studio", {
+    action: "archive_archetype",
+    id,
+    expectedRevision,
+    archived,
+    requestId,
+  })) as LiveSnapshot;
+}
+
 export async function assessReply(
   conversationId: string,
   replyId: string,

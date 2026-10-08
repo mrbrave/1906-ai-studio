@@ -132,8 +132,8 @@ export function publicStudioData(d: StudioData): StudioData {
       fields(u, ["id", "display_name", "compute_credits", "created_at"]),
     ),
     archetypes: d.archetypes.map(publicArchetype),
-    conversations: d.conversations.map((c) =>
-      fields(c, [
+    conversations: d.conversations.map((c) => ({
+      ...fields(c, [
         "id",
         "user_id",
         "archetype_id",
@@ -141,7 +141,10 @@ export function publicStudioData(d: StudioData): StudioData {
         "created_at",
         "updated_at",
       ]),
-    ),
+      ...(c.archetype_snapshot
+        ? { archetype_snapshot: publicArchetype(c.archetype_snapshot) }
+        : {}),
+    })),
     messages: d.messages.map(publicMessage),
   };
 }
