@@ -2,6 +2,9 @@ import type { ArchetypeDraft } from "../src/api/contracts";
 import type { LiveConversation, TurnResult } from "../src/types/live";
 import type { StudioData } from "../src/types/database.types";
 import { DEFAULT_PERSONAS } from "../src/data/defaultPersonas.js";
+import { archetypeFromSeed } from "../src/services/personaCompatibility.js";
+import { upgradePersonaStore } from "./persona-compatibility.js";
+import type { PrivatePersonaRevision } from "./persona-private";
 import { HttpError } from "./http.js";
 export const STUDIO_USER = "00000000-0000-4000-8000-000000000001";
 export interface Attempt {
@@ -47,6 +50,8 @@ export interface Store {
     reason: string;
     at: string;
   }[];
+  /** Optional server-only data keyed by privatePersonaKey(id, profileRevision). */
+  personaPrivateByRevision?: Record<string, PrivatePersonaRevision>;
 }
 export interface Repository {
   read(): Promise<{ revision: number; state: Store }>;
@@ -66,16 +71,9 @@ export function initialStore(): Store {
           created_at: now,
         },
       ],
-      archetypes: DEFAULT_PERSONAS.map((p) => ({
-        id: p.id,
-        user_id: STUDIO_USER,
-        name: p.name,
-        role: p.role,
-        avatar: p.avatar,
-        budget_sensitivity: p.budgetSensitivity,
-        system_prompt: p.systemPrompt,
-        created_at: now,
-      })),
+      archetypes: DEFAULT_PERSONAS.map((p) =>
+        archetypeFromSeed(p, STUDIO_USER, now),
+      ),
       conversations: [],
       messages: [],
     },
@@ -121,7 +119,14 @@ export function createRepository(): Repository {
       const state = result.state ?? initialStore();
       if (state.schemaVersion !== 1)
         throw new HttpError(503, "Studio storage needs migration.");
-      return { revision: result.revision, state };
+      try {
+        return { revision: result.revision, state: upgradePersonaStore(state) };
+      } catch {
+        throw new HttpError(
+          503,
+          "Studio persona data needs review. Saved data has been kept.",
+        );
+      }
     },
     async compareAndSwap(revision, state) {
       // This single-account test store is intentionally bounded. No silent pruning of memory or charges.

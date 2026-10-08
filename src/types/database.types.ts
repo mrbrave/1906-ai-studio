@@ -1,4 +1,5 @@
-/** Row contracts shared by local persistence and the future Supabase adapter.
+import type { BuyerPersonaProfile } from "./persona";
+/** Logical records stored inside the private account JSON and local demo data.
  * All timestamps are ISO 8601; IDs for new rows are UUIDs.
  */
 export interface User {
@@ -17,6 +18,12 @@ export interface Archetype {
   budget_sensitivity: BudgetSensitivity;
   system_prompt: string;
   created_at: string;
+  profile?: BuyerPersonaProfile;
+  profileSchemaVersion?: 2;
+  /** Assigned by the server; missing on legacy records. */
+  profileRevision?: number;
+  updated_at?: string;
+  archived_at?: string;
 }
 export interface Conversation {
   id: string;
@@ -59,6 +66,7 @@ type Table<Row, Required extends keyof Row> = {
   Update: Partial<Row>;
   Relationships: [];
 };
+/** Future normalised adapter contract, NOT the deployed Supabase table layout. */
 export interface Database {
   public: {
     Tables: {

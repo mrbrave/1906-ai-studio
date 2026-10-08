@@ -8,6 +8,10 @@ import {
   type Store,
 } from "./repository.js";
 import { HttpError } from "./http.js";
+import {
+  publicLiveConversation,
+  publicStudioData,
+} from "../src/api/publicData.js";
 export function id(value: unknown): string {
   if (
     typeof value !== "string" ||
@@ -29,8 +33,8 @@ export function intent(value: unknown): ConversationIntent {
 export function snapshot(s: Store): LiveSnapshot {
   // Explicit public projection: never expose dollar amounts, attempts, raw receipts or rates.
   return {
-    data: s.data,
-    conversations: s.conversations,
+    data: publicStudioData(s.data),
+    conversations: s.conversations.map(publicLiveConversation),
     usage: usage(s),
     operations: s.operations.map((o) => ({
       id: o.id,
@@ -113,6 +117,7 @@ export async function studio(value: unknown, repo: Repository) {
         user_id: STUDIO_USER,
         avatar: "🎯",
         created_at: new Date().toISOString(),
+        profileRevision: 1,
       });
     });
   } else if (b.action === "create_conversation") {
