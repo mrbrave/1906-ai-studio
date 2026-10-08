@@ -18,11 +18,21 @@ import { ProviderFailure } from "./model-http.js";
 import { mutate, type Repository, type Operation } from "./repository.js";
 import { workingContext } from "./context.js";
 import { id } from "./studio.js";
+import { publicDraft, publicTurnResult } from "../src/api/publicData.js";
 export interface Engines {
   jev: typeof evaluateWithJEV;
   gemini: typeof complete;
 }
 const engines: Engines = { jev: evaluateWithJEV, gemini: complete };
+function publicResult(
+  kind: Operation["kind"],
+  result: TurnResult | ArchetypeDraft | undefined,
+) {
+  if (!result) throw new Error("Completed operation is missing its result.");
+  return kind === "archetype"
+    ? publicDraft(result as ArchetypeDraft)
+    : publicTurnResult(result as TurnResult);
+}
 export async function runOperation(
   kind: Operation["kind"],
   value: unknown,
@@ -60,7 +70,10 @@ export async function runOperation(
   if (existing?.hash !== undefined && existing.hash !== hash)
     throw new HttpError(409, "Request ID belongs to different content.");
   if (existing?.status === "complete")
-    return { result: existing.result, usage: usage((await repo.read()).state) };
+    return {
+      result: publicResult(kind, existing.result),
+      usage: usage((await repo.read()).state),
+    };
   const allowance = dollars(process.env.STUDIO_BUDGET_USD),
     gr = rates("gemini"),
     jr = kind !== "archetype" ? rates("jev") : null;
@@ -182,7 +195,10 @@ export async function runOperation(
     return structuredClone(current);
   });
   if (op.status === "complete")
-    return { result: op.result, usage: usage((await repo.read()).state) };
+    return {
+      result: publicResult(kind, op.result),
+      usage: usage((await repo.read()).state),
+    };
   async function save(update: (current: Operation) => void) {
     await mutate(repo, (s) => {
       const current = s.operations.find((o) => o.id === key)!;
@@ -424,7 +440,10 @@ export async function runOperation(
       current.result = result;
       current.reserve = 0;
     });
-    return { result, usage: usage((await repo.read()).state) };
+    return {
+      result: publicResult(kind, result),
+      usage: usage((await repo.read()).state),
+    };
   } catch (e) {
     const publicError =
       e instanceof HttpError

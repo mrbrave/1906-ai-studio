@@ -1,3 +1,33 @@
+/** Public, editable context. Absent fields mean unknown, not an inferred trait. */
+export interface BuyerPersonaProfile {
+  industry?: string;
+  companySize?: string;
+  ageRange?: string;
+  incomeRange?: string;
+  background?: string;
+  goals?: string[];
+  painPoints?: string[];
+  buyingMotivations?: string[];
+  typicalObjections?: string[];
+  preferredEvidence?: string[];
+  currentTools?: string[];
+  constraints?: string[];
+  decisionProcess?: string;
+  decisionAuthority?: string;
+  decisionSpeed?: string;
+  preferredChannels?: string[];
+  communicationStyle?: string;
+  examplePhrases?: string[];
+  additionalGuidance?: string;
+  provenance?: Partial<Record<PersonaProfileField, ProfileSource>>;
+}
+export type PersonaProfileField = Exclude<
+  keyof BuyerPersonaProfile,
+  "provenance"
+>;
+export type ProfileSource = "provided" | "inferred" | "seed" | "legacy";
+
+/** Legacy seed/import contract. Do not use this as the persisted profile. */
 export interface BuyerPersona {
   id: string;
   name: string;

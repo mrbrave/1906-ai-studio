@@ -1,5 +1,11 @@
 import { DEFAULT_PERSONAS } from "../data/defaultPersonas";
 import type { Archetype, StudioData } from "../types/database.types";
+import { archetypeFromSeed, upgradePersonaData } from "./personaCompatibility";
+import {
+  profileFromLegacy,
+  PROFILE_SCHEMA_VERSION,
+} from "../api/personaProfile";
+import { publicStudioData } from "../api/publicData";
 import {
   nonEmpty,
   parseDraft,
@@ -12,16 +18,9 @@ export function createInitialData(
   storage: Pick<Storage, "getItem">,
 ): StudioData {
   const now = new Date().toISOString();
-  const archetypes: Archetype[] = DEFAULT_PERSONAS.map((p) => ({
-    id: p.id,
-    user_id: USER_ID,
-    name: p.name,
-    role: p.role,
-    avatar: p.avatar,
-    budget_sensitivity: p.budgetSensitivity,
-    system_prompt: p.systemPrompt,
-    created_at: now,
-  }));
+  const archetypes: Archetype[] = DEFAULT_PERSONAS.map((p) =>
+    archetypeFromSeed(p, USER_ID, now),
+  );
   const legacy = storage.getItem("personaflow_custom_personas");
   if (legacy) {
     const rows: unknown = JSON.parse(legacy);
@@ -31,10 +30,15 @@ export function createInitialData(
       );
     for (const value of rows) {
       const p = record(value);
+      const profile = profileFromLegacy(p);
       const draft = parseDraft({
-        ...p,
+        name: p.name,
+        role: p.role,
         budget_sensitivity: p.budgetSensitivity,
         system_prompt: p.systemPrompt,
+        ...(profile
+          ? { profile, profileSchemaVersion: PROFILE_SCHEMA_VERSION }
+          : {}),
       });
       archetypes.push({
         ...draft,
@@ -42,6 +46,7 @@ export function createInitialData(
         user_id: USER_ID,
         avatar: typeof p.avatar === "string" ? p.avatar : "🎯",
         created_at: now,
+        profileRevision: 1,
       });
     }
   }
@@ -99,6 +104,14 @@ export function validateData(value: unknown): StudioData {
     parseDraft(p);
     nonEmpty(p.avatar);
     date(p.created_at);
+    if (p.updated_at !== undefined) date(p.updated_at);
+    if (p.archived_at !== undefined) date(p.archived_at);
+    if (
+      p.profileRevision !== undefined &&
+      (!Number.isSafeInteger(p.profileRevision) ||
+        Number(p.profileRevision) < 1)
+    )
+      throw new Error("Invalid persona revision.");
     if (p.user_id !== user.id) throw new Error("Invalid archetype owner.");
   }
   for (const value of d.conversations) {
@@ -132,7 +145,11 @@ export function validateData(value: unknown): StudioData {
 }
 export function loadStudio(storage: Storage = localStorage): StudioData {
   const raw = storage.getItem(STORAGE_KEY);
-  const data = raw ? validateData(JSON.parse(raw)) : createInitialData(storage);
+  const data = publicStudioData(
+    upgradePersonaData(
+      raw ? validateData(JSON.parse(raw)) : createInitialData(storage),
+    ),
+  );
   // Recover interrupted requests without silently resending or charging again.
   data.messages = data.messages.map((m) =>
     m.status === "pending"
@@ -151,5 +168,5 @@ export function saveStudio(
   data: StudioData,
   storage: Storage = localStorage,
 ): void {
-  storage.setItem(STORAGE_KEY, JSON.stringify(data));
+  storage.setItem(STORAGE_KEY, JSON.stringify(publicStudioData(data)));
 }
