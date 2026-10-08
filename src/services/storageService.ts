@@ -121,6 +121,14 @@ export function validateData(value: unknown): StudioData {
     date(c.updated_at);
     if (!archetypes.has(String(c.archetype_id)) || c.user_id !== user.id)
       throw new Error("Invalid conversation reference.");
+    if (c.archetype_snapshot !== undefined) {
+      const snapshot = record(c.archetype_snapshot);
+      parseDraft(snapshot);
+      nonEmpty(snapshot.avatar);
+      date(snapshot.created_at);
+      if (snapshot.id !== c.archetype_id || snapshot.user_id !== user.id)
+        throw new Error("Invalid conversation persona snapshot.");
+    }
   }
   for (const value of d.messages) {
     const m = record(value);
@@ -143,12 +151,18 @@ export function validateData(value: unknown): StudioData {
   }
   return d as unknown as StudioData;
 }
-export function loadStudio(storage: Storage = localStorage): StudioData {
+/** Read without request recovery, for persona saves that must see other tabs' revisions. */
+export function readSavedStudio(
+  storage: Storage = localStorage,
+): StudioData | null {
   const raw = storage.getItem(STORAGE_KEY);
+  return raw
+    ? publicStudioData(upgradePersonaData(validateData(JSON.parse(raw))))
+    : null;
+}
+export function loadStudio(storage: Storage = localStorage): StudioData {
   const data = publicStudioData(
-    upgradePersonaData(
-      raw ? validateData(JSON.parse(raw)) : createInitialData(storage),
-    ),
+    upgradePersonaData(readSavedStudio(storage) ?? createInitialData(storage)),
   );
   // Recover interrupted requests without silently resending or charging again.
   data.messages = data.messages.map((m) =>

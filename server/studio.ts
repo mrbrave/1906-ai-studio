@@ -1,4 +1,10 @@
 import { nonEmpty, parseDraft, record } from "../src/api/validation.js";
+import { createHash } from "node:crypto";
+import {
+  archivePersona,
+  editPersona,
+  PersonaError,
+} from "../src/services/personaManagement.js";
 import type { ConversationIntent, LiveSnapshot } from "../src/types/live";
 import { usage } from "./budget.js";
 import {
@@ -101,6 +107,63 @@ export async function studio(value: unknown, repo: Repository) {
     return snapshot((await repo.read()).state);
   }
   if (b.action === "snapshot") return snapshot((await repo.read()).state);
+  if (b.action === "update_archetype" || b.action === "archive_archetype") {
+    const requestId = id(b.requestId),
+      personaId = nonEmpty(b.id, 100);
+    if (
+      !Number.isSafeInteger(b.expectedRevision) ||
+      Number(b.expectedRevision) < 1
+    )
+      throw new HttpError(400, "A valid persona revision is required.");
+    const draft =
+      b.action === "update_archetype" ? parseDraft(b.draft) : undefined;
+    if (b.action === "archive_archetype" && typeof b.archived !== "boolean")
+      throw new HttpError(
+        400,
+        "Choose whether to archive or restore the persona.",
+      );
+    const hash = createHash("sha256")
+      .update(
+        JSON.stringify({
+          action: b.action,
+          personaId,
+          revision: b.expectedRevision,
+          draft,
+          archived: b.action === "archive_archetype" ? b.archived : undefined,
+        }),
+      )
+      .digest("hex");
+    await mutate(repo, (s) => {
+      const receipt = s.personaMutations?.find((r) => r.id === requestId);
+      if (receipt) {
+        if (receipt.hash !== hash)
+          throw new HttpError(409, "Persona request ID already used.");
+        return;
+      }
+      try {
+        s.data = draft
+          ? editPersona(
+              s.data,
+              personaId,
+              Number(b.expectedRevision),
+              draft,
+              new Date().toISOString(),
+            )
+          : archivePersona(
+              s.data,
+              personaId,
+              Number(b.expectedRevision),
+              b.archived as boolean,
+              new Date().toISOString(),
+            );
+      } catch (e) {
+        if (e instanceof PersonaError) throw new HttpError(e.status, e.message);
+        throw e;
+      }
+      (s.personaMutations ??= []).push({ id: requestId, hash });
+    });
+    return snapshot((await repo.read()).state);
+  }
   if (b.action === "save_archetype") {
     const draft = parseDraft(b.draft),
       key = id(b.id);
@@ -136,6 +199,11 @@ export async function studio(value: unknown, repo: Repository) {
       }
       const a = s.data.archetypes.find((a) => a.id === archetypeId);
       if (!a) throw new HttpError(404, "Archetype not found.");
+      if (a.archived_at)
+        throw new HttpError(
+          409,
+          "This persona is archived. Restore it before starting a new conversation.",
+        );
       if (s.conversations.length >= 100)
         throw new HttpError(
           409,

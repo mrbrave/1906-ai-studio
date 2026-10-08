@@ -29,6 +29,8 @@ export interface Conversation {
   id: string;
   user_id: string;
   archetype_id: string;
+  /** Local demo snapshot. Live dialogues have their own frozen archetype. */
+  archetype_snapshot?: Archetype;
   title: string;
   created_at: string;
   updated_at: string;

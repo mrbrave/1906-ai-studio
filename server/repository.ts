@@ -52,6 +52,8 @@ export interface Store {
   }[];
   /** Optional server-only data keyed by privatePersonaKey(id, profileRevision). */
   personaPrivateByRevision?: Record<string, PrivatePersonaRevision>;
+  /** Idempotency receipts for free persona edits and archive/restore actions. Never public. */
+  personaMutations?: { id: string; hash: string }[];
 }
 export interface Repository {
   read(): Promise<{ revision: number; state: Store }>;

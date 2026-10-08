@@ -1,23 +1,29 @@
 import type { UsageSummary } from "../types/live";
-import { Plus, Sparkles, MessageSquare, Zap } from "lucide-react";
-import type { Provider, StudioData } from "../types/database.types";
+import { Plus, Sparkles, MessageSquare, Zap, Users } from "lucide-react";
+import type { Archetype, Provider, StudioData } from "../types/database.types";
 interface Props {
   data: StudioData;
+  disabled?: boolean;
   usage?: UsageSummary;
   activeId: string | null;
   provider: Provider;
   onProvider: (p: Provider) => void;
   onNew: () => void;
   onCreate: () => void;
+  onManage: () => void;
+  conversationPersonas?: Record<string, Archetype>;
   onSelect: (id: string) => void;
 }
 export function Sidebar({
   data,
+  disabled = false,
   activeId,
   provider,
   onProvider,
   onNew,
   onCreate,
+  onManage,
+  conversationPersonas,
   onSelect,
   usage,
 }: Props) {
@@ -29,11 +35,14 @@ export function Sidebar({
         <small>Beta</small>
       </div>
       <div className="sidebar-actions">
-        <button className="primary" onClick={onNew}>
+        <button className="primary" disabled={disabled} onClick={onNew}>
           <Plus size={18} /> New Strategic Dialogue
         </button>
-        <button className="secondary" onClick={onCreate}>
-          <Sparkles size={18} /> Synthesize Archetype
+        <button className="secondary" disabled={disabled} onClick={onCreate}>
+          <Sparkles size={18} /> Create persona
+        </button>
+        <button className="text-button" disabled={disabled} onClick={onManage}>
+          <Users size={18} /> Manage personas
         </button>
       </div>
       <nav aria-label="Recent dialogues" className="history">
@@ -44,10 +53,14 @@ export function Sidebar({
         {[...data.conversations]
           .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
           .map((c) => {
-            const a = data.archetypes.find((p) => p.id === c.archetype_id)!;
+            const a =
+              conversationPersonas?.[c.id] ??
+              c.archetype_snapshot ??
+              data.archetypes.find((p) => p.id === c.archetype_id)!;
             return (
               <button
                 key={c.id}
+                disabled={disabled}
                 aria-current={c.id === activeId ? "page" : undefined}
                 className={`history-item ${c.id === activeId ? "selected" : ""}`}
                 onClick={() => onSelect(c.id)}
@@ -71,6 +84,7 @@ export function Sidebar({
         </label>
         <select
           id="provider"
+          disabled={disabled}
           value={provider}
           onChange={(e) => onProvider(e.target.value as Provider)}
         >
