@@ -4,10 +4,15 @@ import { MAX_INPUT_TOKENS, MAX_OUTPUT_TOKENS } from "./budget.js";
 import { modelPost } from "./model-http.js";
 import { CONTINUATION_ERROR } from "./context.js";
 export type ChatMessage = { role: "user" | "assistant"; content: string };
+export interface GenerationOptions {
+  maxOutputTokens?: number;
+  responseJsonSchema?: Record<string, unknown>;
+}
 export function geminiBody(
   system: string,
   messages: ChatMessage[],
   json = false,
+  options: GenerationOptions = {},
 ) {
   return {
     systemInstruction: { parts: [{ text: system }] },
@@ -16,9 +21,12 @@ export function geminiBody(
       parts: [{ text: m.content }],
     })),
     generationConfig: {
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      maxOutputTokens: options.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
       thinkingConfig: { thinkingLevel: "low" },
       ...(json ? { responseMimeType: "application/json" } : {}),
+      ...(options.responseJsonSchema
+        ? { responseJsonSchema: options.responseJsonSchema }
+        : {}),
     },
   };
 }
@@ -59,7 +67,7 @@ export async function complete(body: ReturnType<typeof geminiBody>) {
     throw new HttpError(413, CONTINUATION_ERROR);
   return modelPost(`${base}:generateContent`, { "x-goog-api-key": key }, body);
 }
-export function completionText(raw: any): string {
+export function completionText(raw: any, maxChars = 16000): string {
   if (raw?.candidates?.[0]?.finishReason !== "STOP")
     throw new Error(
       "Gemini did not finish a usable reply. Retry with a shorter message.",
@@ -69,6 +77,6 @@ export function completionText(raw: any): string {
       ?.filter((p: any) => !p.thought)
       .map((p: any) => p.text || "")
       .join(""),
-    16000,
+    maxChars,
   );
 }

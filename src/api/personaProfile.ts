@@ -6,7 +6,7 @@ import type {
 
 export const PROFILE_SCHEMA_VERSION = 2 as const;
 export const PROFILE_MAX_BYTES = 12000;
-const textLimits = {
+export const PROFILE_TEXT_LIMITS = {
   industry: 200,
   companySize: 120,
   ageRange: 120,
@@ -18,7 +18,7 @@ const textLimits = {
   communicationStyle: 1200,
   additionalGuidance: 2000,
 } as const;
-const listFields = [
+export const PROFILE_LIST_FIELDS = [
   "goals",
   "painPoints",
   "buyingMotivations",
@@ -29,6 +29,8 @@ const listFields = [
   "preferredChannels",
   "examplePhrases",
 ] as const;
+const textLimits = PROFILE_TEXT_LIMITS;
+const listFields = PROFILE_LIST_FIELDS;
 export const PROFILE_FIELDS = [
   ...Object.keys(textLimits),
   ...listFields,

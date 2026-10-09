@@ -11,6 +11,7 @@ import type {
   TurnResult,
 } from "../types/live";
 import { publicPersonaProfile } from "./personaProfile.js";
+import { publicSynthesisReview } from "./synthesisReview.js";
 
 /** Allowlisted scalars only: future object metadata cannot accidentally cross this boundary. */
 function fields<T extends object, K extends keyof T>(
@@ -45,6 +46,9 @@ export function publicDraft(a: ArchetypeDraft): ArchetypeDraft {
     ]),
     ...(a.profile !== undefined
       ? { profile: publicPersonaProfile(a.profile) }
+      : {}),
+    ...(a.synthesisReview !== undefined
+      ? { synthesisReview: publicSynthesisReview(a.synthesisReview) }
       : {}),
   };
 }

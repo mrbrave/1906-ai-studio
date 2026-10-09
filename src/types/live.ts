@@ -55,6 +55,8 @@ export interface ConversationMemory {
 }
 export interface LiveConversation {
   id: string;
+  /** Server-assigned; absence retains the legacy reply path. */
+  promptVersion?: "persona-voice-v1" | "persona-voice-v2";
   archetype: Archetype;
   intent: ConversationIntent;
   version: number;

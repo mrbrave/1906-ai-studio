@@ -20,6 +20,7 @@ import { privatePersonaKey } from "../server/persona-private.ts";
 import { snapshot, studio } from "../server/studio.ts";
 import { createRepository, mutate } from "../server/repository.ts";
 import { runOperation } from "../server/turn.ts";
+import { synthesisFixture } from "./persona-fixtures.mjs";
 import {
   configure,
   MemoryRepository,
@@ -354,14 +355,17 @@ test("fresh and replayed generation and dialogue responses cannot return extra i
   const repo = new MemoryRepository(),
     generation = { requestId: randomUUID(), description: "A practical buyer" };
   const secret = "OPERATION_PRIVATE_SENTINEL";
+  const generatedProfile = synthesisFixture();
   const generated = await runOperation("archetype", generation, repo, {
     jev: async () => assert.fail("No JEV for synthesis"),
-    gemini: async () =>
-      geminiResponse(JSON.stringify({ ...draft, internalMetadata: secret })),
+    gemini: async () => geminiResponse(JSON.stringify(generatedProfile)),
   });
-  assert.deepEqual(generated.result.profile, profile);
+  assert.deepEqual(generated.result.profile, generatedProfile.profile);
   repo.state.operations[0].result.internalMetadata = secret;
   repo.state.operations[0].result.profile.internalMetadata = secret;
+  repo.state.operations[0].result.synthesisReview.internalMetadata = secret;
+  repo.state.operations[0].result.synthesisReview.identitySources.internalMetadata =
+    secret;
   const replayed = await runOperation("archetype", generation, repo, {
     jev: async () => assert.fail(),
     gemini: async () => assert.fail(),

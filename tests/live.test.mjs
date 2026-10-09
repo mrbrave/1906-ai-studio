@@ -15,6 +15,8 @@ import { parseDecision, jevBody } from "../server/jev.ts";
 import { ProviderFailure } from "../server/model-http.ts";
 import { snapshot } from "../server/studio.ts";
 import { createRepository } from "../server/repository.ts";
+import { synthesisFixture } from "./persona-fixtures.mjs";
+import { parseSynthesisedPersona } from "../server/persona-synthesis.ts";
 beforeEach(configure);
 const success = {
   jev: async () => jevResponse(),
@@ -58,8 +60,14 @@ test("JEV runs before Gemini, receives intent and memory; state and reply commit
     },
     gemini: async (body) => {
       events.push("gemini");
-      assert.match(body.systemInstruction.parts[0].text, /request_evidence/);
-      assert.match(body.systemInstruction.parts[0].text, /credibility/);
+      assert.doesNotMatch(
+        body.systemInstruction.parts[0].text,
+        /request_evidence|readinessIndex/,
+      );
+      assert.match(
+        body.systemInstruction.parts[0].text,
+        /Credibility and supporting evidence/,
+      );
       return geminiResponse();
     },
   };
@@ -260,12 +268,7 @@ test("budget, stale version and idempotency conflicts reject before inference", 
 test("archetype generation is metered and repeated request IDs reuse the saved result", async () => {
   const repo = new MemoryRepository(),
     req = { requestId: randomUUID(), description: "A careful buyer" };
-  const draft = {
-    name: "Pat",
-    role: "Buyer",
-    budget_sensitivity: "High",
-    system_prompt: "You are Pat.",
-  };
+  const draft = synthesisFixture();
   let calls = 0;
   const clients = {
     jev: async () => assert.fail(),
@@ -276,7 +279,7 @@ test("archetype generation is metered and repeated request IDs reuse the saved r
   };
   const first = await runOperation("archetype", req, repo, clients);
   await runOperation("archetype", req, repo, clients);
-  assert.deepEqual(first.result, draft);
+  assert.deepEqual(first.result, parseSynthesisedPersona(draft));
   assert.equal(calls, 1);
   assert.equal(totals(repo.state).spent, 4875000);
 });

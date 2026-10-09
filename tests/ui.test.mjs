@@ -34,6 +34,100 @@ const telemetry = {
   suggestedTweak: "Add a case study.",
 };
 
+test("rich synthesis stays a reviewable draft and preserves or updates field sources through save and reopen", async () => {
+  const { ArchetypeSynthesizer } =
+    await import("../src/components/ArchetypeSynthesizer.tsx");
+  const { synthesisFixture } = await import("./persona-fixtures.mjs");
+  const { parseSynthesisedPersona } =
+    await import("../server/persona-synthesis.ts");
+  const result = parseSynthesisedPersona(synthesisFixture());
+  const original = globalThis.fetch;
+  let saved,
+    calls = 0;
+  globalThis.fetch = async (url, opts) => {
+    assert.equal(url, "/api/archetype");
+    assert.equal(JSON.parse(opts.body).description.length, 20000);
+    calls++;
+    return Response.json({ result });
+  };
+  try {
+    render(
+      React.createElement(ArchetypeSynthesizer, {
+        provider: "gemini",
+        onBack() {},
+        onSave(d) {
+          saved = d;
+        },
+      }),
+    );
+    change("Target buyer description", "x".repeat(20000));
+    assert.equal(
+      screen.getByRole("button", { name: "Generate draft" }).disabled,
+      false,
+    );
+    click("Generate draft");
+    await screen.findByText(/Draft generated/);
+    assert.equal(saved, undefined);
+    assert.equal(calls, 1);
+    assert.ok(screen.getByRole("region", { name: "Draft review" }));
+    assert.ok(
+      screen.getByText(
+        "Current tools and internal approval requirements are unknown.",
+      ),
+    );
+    const voice = screen.getByLabelText("Communication style");
+    assert.match(voice.parentElement.textContent, /AI suggestion/);
+    assert.equal(
+      screen.getByLabelText("Current tools and alternatives").value,
+      "",
+    );
+    assert.equal(
+      screen.getByLabelText(/Custom role-play instructions/).value,
+      "",
+    );
+    change("Communication style", "Warm, brief and informal.");
+    assert.match(voice.parentElement.textContent, /Provided/);
+    fireEvent.click(screen.getByRole("radio", { name: "Low" }));
+    click("Save persona");
+    await waitFor(() => assert.ok(saved));
+    assert.equal(saved.profile.provenance.communicationStyle, "provided");
+    assert.equal(saved.profile.provenance.examplePhrases, "inferred");
+    assert.equal(
+      saved.synthesisReview.identitySources.budget_sensitivity,
+      "provided",
+    );
+    assert.equal(saved.profile.currentTools, undefined);
+    assert.match(saved.system_prompt, /Warm, brief and informal/);
+    assert.deepEqual(saved.synthesisReview.notes, result.synthesisReview.notes);
+    cleanup();
+    render(
+      React.createElement(ArchetypeSynthesizer, {
+        provider: "gemini",
+        mode: "edit",
+        initialDraft: saved,
+        onBack() {},
+        onSave() {},
+      }),
+    );
+    assert.equal(
+      screen.getByLabelText("Communication style").value,
+      "Warm, brief and informal.",
+    );
+    assert.match(
+      screen.getByLabelText("Example phrases").parentElement.textContent,
+      /AI suggestion/,
+    );
+    assert.ok(
+      screen.getByText(
+        "Current tools and internal approval requirements are unknown.",
+      ),
+    );
+  } finally {
+    cleanup();
+    globalThis.fetch = original;
+  }
+});
+
 test("draft survives a preflight rejection and reload, can be edited, and an ambiguous response replays once", async () => {
   const {
     MemoryRepository,
@@ -174,8 +268,8 @@ test("over-limit pasted synthesis and dialogue text remains visible and cannot b
   const input = screen.getByRole("textbox", {
     name: "Target buyer description",
   });
-  fireEvent.change(input, { target: { value: "x".repeat(4001) } });
-  assert.equal(input.value.length, 4001);
+  fireEvent.change(input, { target: { value: "x".repeat(20001) } });
+  assert.equal(input.value.length, 20001);
   assert.equal(
     screen.getByRole("button", { name: "Generate draft" }).disabled,
     true,

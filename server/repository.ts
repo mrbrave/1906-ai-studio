@@ -24,6 +24,12 @@ export interface Operation {
   id: string;
   hash: string;
   kind: "dialogue" | "archetype" | "assessment";
+  /** Pinned at admission so retries cannot silently adopt a new prompt/parser. */
+  promptVersion?:
+    | "persona-voice-v1"
+    | "persona-voice-v2"
+    | "persona-synthesis-v1"
+    | "persona-synthesis-v2";
   conversationId?: string;
   status: "running" | "failed" | "complete" | "uncertain";
   startedAt: string;

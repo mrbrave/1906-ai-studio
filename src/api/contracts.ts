@@ -7,4 +7,5 @@ export type ArchetypeDraft = Pick<
   | "system_prompt"
   | "profile"
   | "profileSchemaVersion"
+  | "synthesisReview"
 >;

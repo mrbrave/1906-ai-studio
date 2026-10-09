@@ -53,6 +53,7 @@ export function editPersona(
     delete updated.profile;
     delete updated.profileSchemaVersion;
   }
+  if (!draft.synthesisReview) delete updated.synthesisReview;
   return {
     ...data,
     archetypes: data.archetypes.map((a) => (a.id === id ? updated : a)),

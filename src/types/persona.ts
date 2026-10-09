@@ -27,6 +27,16 @@ export type PersonaProfileField = Exclude<
 >;
 export type ProfileSource = "provided" | "inferred" | "seed" | "legacy";
 
+/** Reviewable generation assumptions, never a hidden motivational profile. */
+export interface SynthesisReview {
+  version: "persona-synthesis-v2";
+  identitySources: Record<
+    "name" | "role" | "budget_sensitivity",
+    "provided" | "inferred"
+  >;
+  notes: string[];
+}
+
 /** Legacy seed/import contract. Do not use this as the persisted profile. */
 export interface BuyerPersona {
   id: string;

@@ -1,5 +1,6 @@
 import type { Telemetry } from "../types/database.types";
 import type { ArchetypeDraft } from "./contracts";
+import { parseSynthesisReview } from "./synthesisReview.js";
 import {
   parsePersonaProfile,
   PROFILE_SCHEMA_VERSION,
@@ -54,6 +55,9 @@ export function parseDraft(value: unknown): ArchetypeDraft {
     budget_sensitivity:
       d.budget_sensitivity as ArchetypeDraft["budget_sensitivity"],
     system_prompt: nonEmpty(d.system_prompt),
+    ...(d.synthesisReview !== undefined
+      ? { synthesisReview: parseSynthesisReview(d.synthesisReview) }
+      : {}),
     ...(d.profile !== undefined
       ? {
           profile: parsePersonaProfile(d.profile),
