@@ -5,6 +5,8 @@ import { DEFAULT_PERSONAS } from "../src/data/defaultPersonas.js";
 import { archetypeFromSeed } from "../src/services/personaCompatibility.js";
 import { upgradePersonaStore } from "./persona-compatibility.js";
 import type { PrivatePersonaRevision } from "./persona-private";
+import type { RubricVersion } from "../src/types/evaluation";
+import type { PrivateEvaluation } from "./jev-v3";
 import { HttpError } from "./http.js";
 export const STUDIO_USER = "00000000-0000-4000-8000-000000000001";
 export interface Attempt {
@@ -31,6 +33,7 @@ export interface Operation {
     | "persona-synthesis-v1"
     | "persona-synthesis-v2";
   conversationId?: string;
+  rubricVersion?: RubricVersion;
   status: "running" | "failed" | "complete" | "uncertain";
   startedAt: string;
   request: Record<string, unknown>;
@@ -40,14 +43,19 @@ export interface Operation {
     state: NonNullable<LiveConversation["state"]>;
     telemetry: TurnResult["telemetry"];
     raw: unknown;
+    privateEvaluation?: PrivateEvaluation;
   };
   result?: TurnResult | ArchetypeDraft;
   error?: string;
 }
+export interface StoredConversation extends LiveConversation {
+  /** Frozen at creation, including null for no configured profile. Never public or sent to Gemini. */
+  privatePersonaRevision?: PrivatePersonaRevision | null;
+}
 export interface Store {
   schemaVersion: 1;
   data: StudioData;
-  conversations: LiveConversation[];
+  conversations: StoredConversation[];
   operations: Operation[];
   adjustments: {
     id: string;

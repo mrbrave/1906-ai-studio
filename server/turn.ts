@@ -12,7 +12,12 @@ import {
   totals,
 } from "./budget.js";
 import { HttpError } from "./http.js";
-import { evaluateWithJEV, jevBody, parseDecision } from "./jev.js";
+import {
+  evaluateWithJEV,
+  jevBody,
+  parseDecision,
+  rubricVersion,
+} from "./jev.js";
 import { complete, completionText, geminiBody } from "./provider.js";
 import { ProviderFailure } from "./model-http.js";
 import { mutate, type Repository, type Operation } from "./repository.js";
@@ -107,6 +112,9 @@ export async function runOperation(
       : kind === "archetype"
         ? SYNTHESIS_VERSION
         : undefined;
+    let evaluationVersion = current
+      ? rubricVersion(current.rubricVersion)
+      : undefined;
     if (
       s.operations.some(
         (o) => o.status === "uncertain" || o.status === "running",
@@ -120,6 +128,8 @@ export async function runOperation(
       const c = s.conversations.find((c) => c.id === request.conversationId);
       if (!c) throw new HttpError(404, "Conversation not found.");
       const conversationVersion = voiceVersion(c.promptVersion);
+      const conversationRubric = rubricVersion(c.rubricVersion);
+      if (!current) evaluationVersion = conversationRubric;
       if (!current) promptVersion = conversationVersion;
       if (c.version !== request.expectedVersion)
         throw new HttpError(
@@ -155,6 +165,10 @@ export async function runOperation(
         ),
         kind === "assessment" ? "" : String(request.pitch),
         kind === "assessment" ? "post_reply" : "pre_reply",
+        {
+          rubricVersion: evaluationVersion,
+          privateProfile: c.privatePersonaRevision,
+        },
       );
     }
     const supported =
@@ -186,6 +200,7 @@ export async function runOperation(
         hash,
         kind,
         promptVersion,
+        ...(kind !== "archetype" ? { rubricVersion: evaluationVersion } : {}),
         conversationId: request.conversationId as string | undefined,
         request,
         status: "running",
@@ -308,14 +323,19 @@ export async function runOperation(
         (m) => m.conversation_id === c.id && m.status === "complete",
       );
       const cached = op.decision;
+      const evaluation = {
+        rubricVersion: rubricVersion(op.rubricVersion),
+        privateProfile: c.privatePersonaRevision,
+      };
       const decision =
         cached ??
         parseDecision(
-          await call("jev", jevBody(c, history, "", "post_reply")),
+          await call("jev", jevBody(c, history, "", "post_reply", evaluation)),
           c,
           String(request.replyId),
           "post_reply",
           history,
+          evaluation,
         );
       if (!cached)
         await save((o) => {
@@ -335,12 +355,23 @@ export async function runOperation(
       const history = s.data.messages.filter(
         (m) => m.conversation_id === c.id && m.status === "complete",
       );
+      const evaluation = {
+        rubricVersion: rubricVersion(op.rubricVersion),
+        privateProfile: c.privatePersonaRevision,
+      };
       if (!op.decision) {
         const raw = await call(
           "jev",
-          jevBody(c, history, String(request.pitch)),
+          jevBody(c, history, String(request.pitch), "pre_reply", evaluation),
         );
-        const decision = parseDecision(raw, c, key, "pre_reply", history);
+        const decision = parseDecision(
+          raw,
+          c,
+          key,
+          "pre_reply",
+          history,
+          evaluation,
+        );
         await save((o) => {
           o.decision = decision;
         });

@@ -82,7 +82,10 @@ export function geminiResponse(text = "Show me relevant evidence.") {
     },
   };
 }
-export async function conversation(repo) {
+export async function conversation(
+  repo,
+  evaluationVersion = "1906-decision-v2",
+) {
   const { studio } = await import("../server/studio.ts");
   const id = randomUUID();
   await studio(
@@ -98,6 +101,10 @@ export async function conversation(repo) {
     },
     repo,
   );
+  // Existing regression cases deliberately exercise the unchanged legacy contract.
+  // v3 integration cases explicitly request v3 and also test studio() directly.
+  repo.state.conversations.find((c) => c.id === id).rubricVersion =
+    evaluationVersion;
   return id;
 }
 export function request(conversationId, expectedVersion = 0) {

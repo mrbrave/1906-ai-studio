@@ -99,7 +99,7 @@ export function TelemetryDrawer({
           <p>{shown?.unavailableReason}</p>
           {shown?.status === "provisional" && (
             <p>
-              Provisional estimate · review confidence and evidence sufficiency.
+              Provisional estimate · review confidence and assessment grounding.
             </p>
           )}
           <div className="score-track">
@@ -148,12 +148,45 @@ export function TelemetryDrawer({
               )}
             </section>
             <section>
-              <h3>Evidence sufficiency</h3>
-              <p>
-                {shown.evidenceSufficiency == null
-                  ? "Not supplied"
-                  : `${Math.round(shown.evidenceSufficiency * 100)}% · evaluator estimate`}
-              </p>
+              {shown.rubricVersion === "1906-decision-v3" ? (
+                <>
+                  <h3>Supporting evidence for this decision</h3>
+                  <p>
+                    {shown.evidenceStrength == null
+                      ? "Not supplied"
+                      : `${shown.evidenceStrength}/4 · evidence rubric`}
+                  </p>
+                  <p className="muted">
+                    {shown.dimensions?.evidence_sufficiency.status} ·{" "}
+                    {confidence(
+                      shown.dimensions?.evidence_sufficiency.confidence,
+                    )}
+                  </p>
+                  <h3>Assessment grounding</h3>
+                  <p>
+                    {shown.assessmentGrounding == null
+                      ? "Not supplied"
+                      : `${Math.round(shown.assessmentGrounding * 100)}% · evaluator estimate`}
+                  </p>
+                  <p className="muted">
+                    Whether there is enough conversation to assess readiness;
+                    separate from evidence supporting the offer.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3>Legacy assessment grounding</h3>
+                  <p>
+                    {shown.evidenceSufficiency == null
+                      ? "Not supplied"
+                      : `${Math.round(shown.evidenceSufficiency * 100)}% · evaluator estimate`}
+                  </p>
+                  <p className="muted">
+                    This older field assessed available conversation, not the
+                    strength of product evidence.
+                  </p>
+                </>
+              )}
               {shown.missingInformation?.map((x) => (
                 <p key={x}>{x}</p>
               ))}
