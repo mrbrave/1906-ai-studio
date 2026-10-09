@@ -33,7 +33,7 @@ The `10` above is an example, not an allocated amount. Increase `STUDIO_BUDGET_U
 
 ## Turn behaviour
 
-`POST /api/studio` loads saved state, saves an archetype or creates a conversation. `POST /api/dialogue` accepts a conversation ID, pitch, expected version and request ID. It loads the immutable persona snapshot and intent, reserves usage, calls JEV, validates its typed answers, then sends the updated decision state to Gemini. Only a committed reply advances the conversation version. State snapshots and raw JEV answers are retained in the private operation records.
+`POST /api/studio` loads saved state, saves an archetype or creates a conversation. `POST /api/dialogue` accepts a conversation ID, pitch, expected version and request ID. It loads the immutable persona snapshot and intent, reserves usage, calls JEV and validates its typed answers. New conversations send the full structured profile and a concise provisional summary to Gemini; legacy conversations keep their previous decision-state prompt. Only a committed reply advances the conversation version. State snapshots and raw JEV answers are retained in the private operation records.
 
 The buyer's immutable persona and intent, bounded working context and latest decision state reach JEV on every turn. Readiness (0–4 × 25), sentiment, friction, evidence sufficiency and confidence are independent fields. Low-confidence readiness is provisional; missing/invalid readiness is unavailable with a reason. Buyer-turn evidence is required for stance and concern resolution. Seller reassurance alone cannot establish acceptance. These private-test rubrics are not a validated model of real-world conversion.
 
@@ -93,5 +93,7 @@ Official references verified 5 October 2026:
 - https://supabase.com/docs/guides/database/functions
 
 ## Evaluation and continuity review
+
+See [step 3: rich synthesis and conversational voice](docs/persona-synthesis-voice-step-3.md) for structured persona generation, the 20,000-character source and 6,144-token synthesis output limits, reviewable assumptions and versioned reply prompts. Chat remains at 2,048 requested output tokens and the conservative billing envelope is unchanged. These additions require no SQL migration; existing conversations retain their previous prompt path.
 
 See [the implementation review](docs/studio-continuity-review.md) for verified causes, Synthetic Rob replay evidence, bounded-memory trade-offs, test results and remaining live-provider checks. Existing stores require no SQL migration or new environment variables for this change. A protected preview must use isolated test storage before provider testing.

@@ -5,6 +5,8 @@ import type {
 } from "../src/types/live";
 import type { Message } from "../src/types/database.types";
 import { HttpError } from "./http.js";
+import { publicPersonaProfile } from "../src/api/personaProfile.js";
+import { editablePrompt } from "../src/services/personaEditor.js";
 export const CONTEXT_BYTES = 48000;
 export const MEMORY_BYTES = 12000;
 export const RECENT_MESSAGES = 4;
@@ -104,8 +106,14 @@ export function contextData(
     archetype: {
       name: c.archetype.name,
       role: c.archetype.role,
-      system_prompt: c.archetype.system_prompt,
+      system_prompt:
+        c.promptVersion === "persona-voice-v2"
+          ? editablePrompt(c.archetype) || undefined
+          : c.archetype.system_prompt,
       budget_sensitivity: c.archetype.budget_sensitivity,
+      ...(c.promptVersion === "persona-voice-v2" && c.archetype.profile
+        ? { profile: publicPersonaProfile(c.archetype.profile) }
+        : {}),
     },
     conversationIntent: c.intent,
     previousState: latestState(c),

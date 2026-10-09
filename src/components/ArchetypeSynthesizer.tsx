@@ -3,11 +3,13 @@ import { Sparkles, ArrowLeft } from "lucide-react";
 import type { Provider } from "../types/database.types";
 import type { ArchetypeDraft } from "../api/contracts";
 import { synthesiseArchetype } from "../api/gemini.client";
+import { SYNTHESIS_DESCRIPTION_CHARS } from "../api/taskLimits";
 import {
   completePersonaDraft,
   editablePrompt,
   PERSONA_SECTIONS,
   profileInputs,
+  sourceLabel,
 } from "../services/personaEditor";
 
 const EMPTY: ArchetypeDraft = {
@@ -49,6 +51,27 @@ export function ArchetypeSynthesizer({
   const [generated, setGenerated] = useState(false);
   const request = useRef<{ id: string; description: string } | null>(null);
   const inFlight = useRef(false);
+  const originalInputs = profileInputs(originalProfile);
+  function setIdentity<K extends "name" | "role" | "budget_sensitivity">(
+    key: K,
+    value: ArchetypeDraft[K],
+  ) {
+    setDraft((current) => ({
+      ...current,
+      [key]: value,
+      ...(current.synthesisReview
+        ? {
+            synthesisReview: {
+              ...current.synthesisReview,
+              identitySources: {
+                ...current.synthesisReview.identitySources,
+                [key]: "provided",
+              },
+            },
+          }
+        : {}),
+    }));
+  }
   const dirty =
     generated ||
     !!description ||
@@ -65,7 +88,11 @@ export function ArchetypeSynthesizer({
     [onStateChange],
   );
   async function generate() {
-    if (inFlight.current || !description.trim() || description.length > 4000)
+    if (
+      inFlight.current ||
+      !description.trim() ||
+      description.length > SYNTHESIS_DESCRIPTION_CHARS
+    )
       return;
     if (provider === "demo") {
       setError(
@@ -200,7 +227,9 @@ export function ArchetypeSynthesizer({
             </h3>
             <p>
               Tell us about the buyer, their priorities and their usual
-              objections. Review the result in the fields below before saving.
+              objections. Include examples of how they speak and any buying
+              constraints you know. Review the draft and its assumptions before
+              saving.
             </p>
             <label htmlFor="description">Target buyer description</label>
             <textarea
@@ -211,9 +240,10 @@ export function ArchetypeSynthesizer({
               placeholder="A Head of Growth at a B2B SaaS company who needs credible reporting without adding more work for the team…"
             />
             <p className="muted">
-              {description.length.toLocaleString()} / 4,000 characters
+              {description.length.toLocaleString()} /{" "}
+              {SYNTHESIS_DESCRIPTION_CHARS.toLocaleString()} characters
             </p>
-            {description.length > 4000 && (
+            {description.length > SYNTHESIS_DESCRIPTION_CHARS && (
               <p role="alert">
                 Source input is too long. Your full pasted text is retained;
                 shorten it before synthesis.
@@ -222,7 +252,9 @@ export function ArchetypeSynthesizer({
             <button
               className="secondary"
               disabled={
-                !!busy || !description.trim() || description.length > 4000
+                !!busy ||
+                !description.trim() ||
+                description.length > SYNTHESIS_DESCRIPTION_CHARS
               }
               onClick={() => void generate()}
             >
@@ -235,6 +267,27 @@ export function ArchetypeSynthesizer({
             Draft generated. Check the details and add any missing context
             before saving.
           </p>
+        )}
+        {draft.synthesisReview && (
+          <section className="persona-note" aria-label="Draft review">
+            <h3>Review the assumptions</h3>
+            <p>
+              AI suggestions are editable assumptions. Blank fields are unknown.
+            </p>
+            {draft.synthesisReview.notes.length > 0 && (
+              <>
+                <p>
+                  Notes from the original generation; check these alongside your
+                  edits.
+                </p>
+                <ul>
+                  {draft.synthesisReview.notes.map((note, i) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
         )}
         <form
           onSubmit={(e) => {
@@ -253,26 +306,34 @@ export function ArchetypeSynthesizer({
                 <label>
                   Full name
                   <input
+                    aria-label="Full name"
                     required
                     maxLength={120}
                     value={draft.name}
-                    onChange={(e) =>
-                      setDraft({ ...draft, name: e.target.value })
-                    }
+                    onChange={(e) => setIdentity("name", e.target.value)}
                     placeholder="Marcus Vance-Ross"
                   />
+                  {draft.synthesisReview && (
+                    <span className="muted field-hint">
+                      {sourceLabel(draft.synthesisReview.identitySources.name)}
+                    </span>
+                  )}
                 </label>
                 <label>
                   Role
                   <input
+                    aria-label="Role"
                     required
                     maxLength={200}
                     value={draft.role}
-                    onChange={(e) =>
-                      setDraft({ ...draft, role: e.target.value })
-                    }
+                    onChange={(e) => setIdentity("role", e.target.value)}
                     placeholder="Head of Growth Marketing"
                   />
+                  {draft.synthesisReview && (
+                    <span className="muted field-hint">
+                      {sourceLabel(draft.synthesisReview.identitySources.role)}
+                    </span>
+                  )}
                 </label>
               </div>
             </section>
@@ -324,6 +385,14 @@ export function ArchetypeSynthesizer({
                           />
                         )}
                         <span id={hintId} className="muted field-hint">
+                          {!inputs[field.key].trim()
+                            ? "Not specified"
+                            : sourceLabel(
+                                inputs[field.key] === originalInputs[field.key]
+                                  ? originalProfile?.provenance?.[field.key]
+                                  : "provided",
+                              )}
+                          {" · "}
                           {list
                             ? "One per line · up to 12 items, 500 characters each"
                             : `${inputs[field.key].length.toLocaleString()} / ${"max" in field ? field.max?.toLocaleString() : ""} characters`}
@@ -342,16 +411,21 @@ export function ArchetypeSynthesizer({
                               name="budget"
                               checked={draft.budget_sensitivity === value}
                               onChange={() =>
-                                setDraft({
-                                  ...draft,
-                                  budget_sensitivity: value,
-                                })
+                                setIdentity("budget_sensitivity", value)
                               }
                             />
                             {value}
                           </label>
                         ))}
                       </div>
+                      {draft.synthesisReview && (
+                        <p className="muted field-hint">
+                          {sourceLabel(
+                            draft.synthesisReview.identitySources
+                              .budget_sensitivity,
+                          )}
+                        </p>
+                      )}
                     </fieldset>
                   )}
                 </div>

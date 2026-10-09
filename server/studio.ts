@@ -93,6 +93,9 @@ export async function studio(value: unknown, repo: Repository) {
         state: null,
         continuationOf: sourceId,
         continuationSummary: summary,
+        ...(source.promptVersion
+          ? { promptVersion: source.promptVersion }
+          : {}),
       });
       const now = new Date().toISOString();
       s.data.conversations.unshift({
@@ -213,6 +216,7 @@ export async function studio(value: unknown, repo: Repository) {
       s.conversations.push({
         id: key,
         archetype: structuredClone(a),
+        promptVersion: "persona-voice-v2",
         intent: target,
         version: 0,
         state: null,

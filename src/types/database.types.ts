@@ -1,4 +1,4 @@
-import type { BuyerPersonaProfile } from "./persona";
+import type { BuyerPersonaProfile, SynthesisReview } from "./persona";
 /** Logical records stored inside the private account JSON and local demo data.
  * All timestamps are ISO 8601; IDs for new rows are UUIDs.
  */
@@ -20,6 +20,7 @@ export interface Archetype {
   created_at: string;
   profile?: BuyerPersonaProfile;
   profileSchemaVersion?: 2;
+  synthesisReview?: SynthesisReview;
   /** Assigned by the server; missing on legacy records. */
   profileRevision?: number;
   updated_at?: string;

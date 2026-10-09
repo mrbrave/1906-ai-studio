@@ -21,6 +21,8 @@ export function personaEditorSession(
   if (draft && mode === "duplicate") {
     draft.system_prompt = editablePrompt(draft);
     draft.name = `${draft.name.slice(0, 113)} (copy)`;
+    if (draft.synthesisReview)
+      draft.synthesisReview.identitySources.name = "provided";
   }
   return {
     key: crypto.randomUUID(),
@@ -118,6 +120,18 @@ export const PERSONA_FIELDS = PERSONA_SECTIONS.flatMap(
   (section) => section.fields,
 );
 export type ProfileInputs = Record<PersonaProfileField, string>;
+export function sourceLabel(source?: string): string {
+  return (
+    (
+      {
+        provided: "Provided",
+        inferred: "AI suggestion · review",
+        seed: "Built-in profile",
+        legacy: "Imported",
+      } as Record<string, string>
+    )[source ?? ""] ?? "Source not recorded"
+  );
+}
 export function profileInputs(
   profile: BuyerPersonaProfile = {},
 ): ProfileInputs {
@@ -154,7 +168,7 @@ export function profileFromInputs(
   if (Object.keys(provenance).length) values.provenance = provenance;
   return values as BuyerPersonaProfile;
 }
-/** Compatibility bridge for manually created profiles; the richer voice compiler is a later step. */
+/** Public compatibility summary; the actual reply prompt is compiled on the server. */
 export function profilePrompt(
   draft: Omit<ArchetypeDraft, "system_prompt">,
 ): string {

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Archive, Copy, Pencil, Plus, RotateCcw } from "lucide-react";
 import type { Archetype } from "../types/database.types";
-import { PERSONA_FIELDS } from "../services/personaEditor";
+import { PERSONA_FIELDS, sourceLabel } from "../services/personaEditor";
 
 export function PersonaManager({
   personas,
@@ -144,6 +144,9 @@ export function PersonaManager({
                       <div key={key}>
                         <dt>{label}</dt>
                         <dd>
+                          <p className="muted field-hint">
+                            {sourceLabel(a.profile?.provenance?.[key])}
+                          </p>
                           {Array.isArray(value) ? (
                             <ul>
                               {value.map((item, i) => (
@@ -158,6 +161,34 @@ export function PersonaManager({
                     );
                   })}
                 </dl>
+                {a.synthesisReview && (
+                  <div className="persona-note">
+                    <p>
+                      Name:{" "}
+                      {sourceLabel(a.synthesisReview.identitySources.name)}.
+                      Role:{" "}
+                      {sourceLabel(a.synthesisReview.identitySources.role)}.
+                      Budget sensitivity:{" "}
+                      {sourceLabel(
+                        a.synthesisReview.identitySources.budget_sensitivity,
+                      )}
+                      .
+                    </p>
+                    {a.synthesisReview.notes.length > 0 && (
+                      <>
+                        <p>
+                          Notes from the original generation; review alongside
+                          any edits.
+                        </p>
+                        <ul>
+                          {a.synthesisReview.notes.map((note, i) => (
+                            <li key={i}>{note}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                )}
                 <details>
                   <summary>Custom role-play instructions</summary>
                   <p className="persona-instructions">{a.system_prompt}</p>
