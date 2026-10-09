@@ -35,7 +35,7 @@ The `10` above is an example, not an allocated amount. Increase `STUDIO_BUDGET_U
 
 `POST /api/studio` loads saved state, saves an archetype or creates a conversation. `POST /api/dialogue` accepts a conversation ID, pitch, expected version and request ID. It loads the immutable persona snapshot and intent, reserves usage, calls JEV and validates its typed answers. New conversations send the full structured profile and a concise provisional summary to Gemini; legacy conversations keep their previous decision-state prompt. Only a committed reply advances the conversation version. State snapshots and raw JEV answers are retained in the private operation records.
 
-The buyer's immutable persona and intent, bounded working context and latest decision state reach JEV on every turn. Readiness (0–4 × 25), sentiment, friction, evidence sufficiency and confidence are independent fields. Low-confidence readiness is provisional; missing/invalid readiness is unavailable with a reason. Buyer-turn evidence is required for stance and concern resolution. Seller reassurance alone cannot establish acceptance. These private-test rubrics are not a validated model of real-world conversion.
+The buyer's immutable persona and intent, bounded working context and latest decision state reach JEV on every turn. New conversations use the versioned V3 rubric with separate readiness (0–4 × 25), supporting evidence (0–4), assessment grounding (0–1), sentiment, friction and per-dimension statuses. Optional private motivational alignment/relevance results stay in private operation records and do not enter Gemini's reply context or public JSON. Low-confidence readiness is provisional; missing/invalid readiness is unavailable with a reason. Buyer-turn evidence is required for stance and concern resolution. Seller reassurance alone cannot establish acceptance. These private-test rubrics are not a validated model of real-world conversion.
 
 After the reply is committed, the browser calls `POST /api/assessment` with the latest reply ID and conversation version. This metered JEV-only call sees the completed exchange and updates observed telemetry without generating another reply. Pending/failed telemetry labels the previous completed assessment, and assessment can be retried independently. Stale results cannot overwrite newer versions. Pre-reply guidance remains available separately. Closing the tab before assessment requires **Assess latest reply** after unlocking; there is no background job.
 
@@ -93,6 +93,8 @@ Official references verified 5 October 2026:
 - https://supabase.com/docs/guides/database/functions
 
 ## Evaluation and continuity review
+
+See [step 4: JEV v3 evaluation](docs/jev-evaluation-step-4.md) for dimension semantics, private profile handling, older evidence references, storage compatibility and verification. Existing conversations and continuations keep V2; start a new conversation to test V3. Historical `evidenceSufficiency` is labelled legacy assessment grounding, not reinterpreted as product evidence. No SQL migration is required.
 
 See [step 3: rich synthesis and conversational voice](docs/persona-synthesis-voice-step-3.md) for structured persona generation, the 20,000-character source and 6,144-token synthesis output limits, reviewable assumptions and versioned reply prompts. Chat remains at 2,048 requested output tokens and the conservative billing envelope is unchanged. These additions require no SQL migration; existing conversations retain their previous prompt path.
 

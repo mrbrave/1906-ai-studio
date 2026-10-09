@@ -12,6 +12,7 @@ import type {
 } from "../types/live";
 import { publicPersonaProfile } from "./personaProfile.js";
 import { publicSynthesisReview } from "./synthesisReview.js";
+import { publicDimensions } from "./publicEvaluation.js";
 
 /** Allowlisted scalars only: future object metadata cannot accidentally cross this boundary. */
 function fields<T extends object, K extends keyof T>(
@@ -93,9 +94,12 @@ export function publicDecision(d: DecisionState): DecisionState {
       "sentimentConfidence",
       "frictionConfidence",
       "evidenceSufficiency",
+      "evidenceStrength",
+      "assessmentGrounding",
       "stance",
       "stanceConfidence",
     ]),
+    ...(d.dimensions ? { dimensions: publicDimensions(d.dimensions) } : {}),
     unresolvedObjections: strings(d.unresolvedObjections),
     ...(d.remainingConditions
       ? { remainingConditions: strings(d.remainingConditions) }

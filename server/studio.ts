@@ -15,6 +15,10 @@ import {
 } from "./repository.js";
 import { HttpError } from "./http.js";
 import {
+  privatePersonaKey,
+  parsePrivatePersonaRevision,
+} from "./persona-private.js";
+import {
   publicLiveConversation,
   publicStudioData,
 } from "../src/api/publicData.js";
@@ -93,6 +97,16 @@ export async function studio(value: unknown, repo: Repository) {
         state: null,
         continuationOf: sourceId,
         continuationSummary: summary,
+        ...(source.rubricVersion
+          ? { rubricVersion: source.rubricVersion }
+          : {}),
+        ...(source.privatePersonaRevision !== undefined
+          ? {
+              privatePersonaRevision: structuredClone(
+                source.privatePersonaRevision,
+              ),
+            }
+          : {}),
         ...(source.promptVersion
           ? { promptVersion: source.promptVersion }
           : {}),
@@ -213,10 +227,17 @@ export async function studio(value: unknown, repo: Repository) {
           "Test conversation limit reached. Archive the test store before continuing.",
         );
       const now = new Date().toISOString();
+      const revision = a.profileRevision ?? 1;
+      const privateProfile =
+        s.personaPrivateByRevision?.[privatePersonaKey(a.id, revision)];
       s.conversations.push({
         id: key,
         archetype: structuredClone(a),
         promptVersion: "persona-voice-v2",
+        rubricVersion: "1906-decision-v3",
+        privatePersonaRevision: privateProfile
+          ? parsePrivatePersonaRevision(privateProfile, a.id, revision)
+          : null,
         intent: target,
         version: 0,
         state: null,

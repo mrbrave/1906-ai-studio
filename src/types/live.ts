@@ -1,4 +1,5 @@
 import type { Archetype, StudioData, Telemetry } from "./database.types";
+import type { DecisionDimensions, RubricVersion } from "./evaluation";
 export interface ConversationIntent {
   objective: string;
   proposition: string;
@@ -28,6 +29,11 @@ export interface DecisionState {
   sentimentConfidence?: number | null;
   frictionConfidence?: number | null;
   evidenceSufficiency?: number | null;
+  /** v2 evidenceSufficiency above is legacy assessment grounding, never v3 evidence strength. */
+  dimensions?: DecisionDimensions;
+  assessmentGrounding?: number | null;
+  /** Native v3 score, 0–4. Not a probability. */
+  evidenceStrength?: number | null;
   stance?: string;
   stanceConfidence?: number | null;
   remainingConditions?: string[];
@@ -57,6 +63,8 @@ export interface LiveConversation {
   id: string;
   /** Server-assigned; absence retains the legacy reply path. */
   promptVersion?: "persona-voice-v1" | "persona-voice-v2";
+  /** Server assigned. Absence retains the v2 evaluation contract. */
+  rubricVersion?: RubricVersion;
   archetype: Archetype;
   intent: ConversationIntent;
   version: number;

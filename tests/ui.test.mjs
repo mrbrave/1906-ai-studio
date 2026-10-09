@@ -34,6 +34,73 @@ const telemetry = {
   suggestedTweak: "Add a case study.",
 };
 
+test("insights distinguish v3 supporting evidence from grounding and label the old field honestly", async () => {
+  const { TelemetryDrawer } =
+    await import("../src/components/TelemetryDrawer.tsx");
+  const decision = {
+    rubricVersion: "1906-decision-v3",
+    phase: "post_reply",
+    evaluatedThrough: "reply",
+    version: 1,
+    readinessIndex: 75,
+    readinessConfidence: 0.8,
+    status: "complete",
+    sentiment: "positive",
+    friction: "credibility",
+    evidenceStrength: 2,
+    assessmentGrounding: 0.9,
+    remainingConditions: [],
+    concerns: [],
+    dimensions: {
+      evidence_sufficiency: { value: 2, confidence: 0.8, status: "complete" },
+    },
+    privateEvaluation: { profileRelevance: 0.78, taxonomy: "PRIVATE_SENTINEL" },
+  };
+  const props = {
+    open: true,
+    busy: false,
+    onClose() {},
+    onRetry() {},
+    decision,
+    message: {
+      id: "reply",
+      provider: "gemini",
+      telemetry_status: "complete",
+      telemetry,
+    },
+  };
+  try {
+    render(React.createElement(TelemetryDrawer, props));
+    assert.ok(screen.getByText("Supporting evidence for this decision"));
+    assert.ok(screen.getByText("2/4 · evidence rubric"));
+    assert.ok(screen.getByText("Assessment grounding"));
+    assert.ok(screen.getByText("90% · evaluator estimate"));
+    assert.equal(document.body.textContent.includes("PRIVATE_SENTINEL"), false);
+    cleanup();
+    render(
+      React.createElement(TelemetryDrawer, {
+        ...props,
+        decision: {
+          ...decision,
+          rubricVersion: "1906-decision-v2",
+          dimensions: undefined,
+          evidenceStrength: undefined,
+          assessmentGrounding: undefined,
+          evidenceSufficiency: 0.9,
+        },
+      }),
+    );
+    assert.ok(screen.getByText("Legacy assessment grounding"));
+    assert.equal(
+      screen.queryByText("Supporting evidence for this decision"),
+      null,
+    );
+    assert.ok(screen.getByText("90% · evaluator estimate"));
+  } finally {
+    cleanup();
+  }
+});
+
 test("rich synthesis stays a reviewable draft and preserves or updates field sources through save and reopen", async () => {
   const { ArchetypeSynthesizer } =
     await import("../src/components/ArchetypeSynthesizer.tsx");
