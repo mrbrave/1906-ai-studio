@@ -1065,3 +1065,259 @@ summary:focus-visible {
     padding: 10px 6px;
   }
 }
+
+/* Step 5: keep the Studio's cream, blue, marker outlines and conversational shapes. */
+.chat-workspace {
+  flex: 1;
+  height: auto;
+}
+.message .message-speaker {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.8;
+}
+.message-row:focus {
+  outline: 3px solid #0271a3;
+  outline-offset: 5px;
+  border-radius: 12px;
+}
+.persona-context {
+  padding: 18px;
+  border: 2px solid #1a1a1a;
+  border-radius: 16px 22px 12px 18px;
+  background: #faf9f6;
+  min-width: 0;
+}
+.persona-context-summary {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 12px 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.conversation-persona {
+  border: 0;
+  border-bottom: 1px solid #dcdad2;
+  border-radius: 0;
+  padding: 8px 30px;
+  flex-shrink: 0;
+}
+.persona-context-body {
+  max-height: 30vh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 4px 6px 12px;
+}
+.conversation-persona .persona-note {
+  margin: 10px 0;
+}
+.chat-status {
+  flex-shrink: 0;
+  padding: 0 30px;
+  background: #faf9f6;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #01537e;
+}
+.chat-status:not(:empty) {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.chat-status button {
+  text-decoration: underline;
+  margin-left: 8px;
+  font-weight: 800;
+}
+.chat-technical {
+  max-width: 860px;
+  margin: 8px auto 0;
+  font-size: 10px;
+  color: #666;
+}
+.chat-technical summary {
+  cursor: pointer;
+}
+.chat-technical p {
+  margin-top: 8px;
+  max-width: 620px;
+}
+.working {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.typing-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+.typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #01537e;
+  animation: reply-pulse 1.4s ease-in-out infinite;
+}
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes reply-pulse {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+  }
+  35% {
+    opacity: 1;
+  }
+}
+.telemetry {
+  top: 0;
+  width: min(420px, 100%);
+}
+.telemetry-body {
+  gap: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.telemetry-body h3 {
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.telemetry-body h4 {
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 14px;
+}
+.telemetry-body ul {
+  list-style: disc;
+  padding-left: 18px;
+}
+.telemetry-body summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+.telemetry button:focus-visible,
+.telemetry summary:focus-visible {
+  outline-color: #a9dff3;
+}
+.telemetry header button {
+  padding: 8px;
+}
+.stance-label {
+  color: white;
+  font-weight: 800;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.insight-freshness {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ffffff30;
+}
+.insight-freshness .eyebrow {
+  margin-bottom: 8px;
+}
+.insight-update {
+  padding: 14px;
+  border: 1px solid #ffffff50;
+  border-radius: 12px;
+}
+.insight-update button {
+  margin: 10px 0;
+  border: 1px solid #bddbe8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 800;
+}
+.insight-update details {
+  margin-top: 10px;
+}
+.insight-caveat {
+  color: #ffe0b0;
+  font-size: 12px;
+}
+.score {
+  font-size: 54px;
+}
+.score-unavailable {
+  font-size: 24px;
+  letter-spacing: -1px;
+  margin-bottom: 8px;
+}
+.insight-details {
+  border-top: 1px solid #ffffff30;
+  padding-top: 16px;
+}
+.insight-details > div {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+.insight-details h3 {
+  margin-top: 12px;
+}
+.insight-details blockquote {
+  border-left: 3px solid #79c2e2;
+  padding-left: 12px;
+  margin: 12px 0;
+  white-space: pre-wrap;
+}
+.source-link {
+  text-decoration: underline;
+}
+.insight-details .muted {
+  font-size: 11px;
+}
+@media (max-width: 760px) {
+  .conversation-persona {
+    padding: 8px 16px;
+  }
+  .persona-context .avatar {
+    display: grid;
+  }
+  .chat-status {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .composer {
+    padding: 12px 15px;
+  }
+  .composer textarea {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .workspace-header {
+    gap: 8px;
+  }
+  .workspace-header .analytics-toggle {
+    white-space: nowrap;
+  }
+  .telemetry {
+    top: 0;
+  }
+  .telemetry-body {
+    padding: 20px;
+  }
+}
+.chat-workspace > .workspace-header,
+.chat-workspace > .composer {
+  flex-shrink: 0;
+}
+@media (min-width: 1200px) {
+  .workspace:has(> .telemetry) {
+    padding-right: 420px;
+  }
+}
+.insights-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: #0007;
+  cursor: default;
+}

@@ -251,21 +251,21 @@ test("draft survives a preflight rejection and reload, can be edited, and an amb
     render(React.createElement(App));
     change("Studio access code", "private-test-access-code-32-characters");
     click("Open Studio");
-    await screen.findByLabelText("Your strategic message");
+    await screen.findByLabelText("Your message");
   }
   try {
     await open();
     const exact =
       "  Commercial proposal\n\nAUD 4,500 + GST; subject to review.  ";
-    change("Your strategic message", exact);
+    change("Your message", exact);
     click("Send message");
     await screen.findByText("The bounded working context is full.");
-    assert.equal(screen.getByLabelText("Your strategic message").value, exact);
+    assert.equal(screen.getByLabelText("Your message").value, exact);
     cleanup();
     await open();
-    assert.equal(screen.getByLabelText("Your strategic message").value, exact);
+    assert.equal(screen.getByLabelText("Your message").value, exact);
     const shorter = "Please review the scope before accepting.";
-    change("Your strategic message", shorter);
+    change("Your message", shorter);
     reject = false;
     click("Send message");
     await screen.findByText("Network connection lost");
@@ -275,10 +275,10 @@ test("draft survives a preflight rejection and reload, can be edited, and an amb
     assert.notEqual(ids[0], ids[1]);
     assert.equal(generations, 1);
     assert.equal(repo.state.data.messages.length, 2);
-    assert.equal(screen.getByLabelText("Your strategic message").value, "");
-    click("Expand Analytics");
-    click("Assess latest reply");
-    await screen.findByText("JEV · completed exchange");
+    assert.equal(screen.getByLabelText("Your message").value, "");
+    click("Buyer insights");
+    click("Update insights");
+    await screen.findByText("Latest reply assessed");
     assert.equal(generations, 1);
     assert.equal(repo.state.data.messages.length, 2);
   } finally {
@@ -311,16 +311,13 @@ test("over-limit pasted synthesis and dialogue text remains visible and cannot b
       onMenu() {},
     }),
   );
-  change("Your strategic message", "x".repeat(4001));
-  assert.equal(
-    screen.getByLabelText("Your strategic message").value.length,
-    4001,
-  );
+  change("Your message", "x".repeat(4001));
+  assert.equal(screen.getByLabelText("Your message").value.length, 4001);
   assert.equal(
     screen.getByRole("button", { name: "Send message" }).disabled,
     true,
   );
-  fireEvent.keyDown(screen.getByLabelText("Your strategic message"), {
+  fireEvent.keyDown(screen.getByLabelText("Your message"), {
     key: "Enter",
   });
   assert.equal(sent, 0);
@@ -350,10 +347,10 @@ test("offline demo keeps its history and illustrative credits", async () => {
   try {
     render(React.createElement(App));
     click(/Alex Vance/);
-    change("Your strategic message", "A measurable integration pitch");
+    change("Your message", "A measurable integration pitch");
     click("Send message");
     await screen.findByText(new RegExp(reply));
-    click("Expand Analytics");
+    click("Buyer insights");
     await screen.findByText("Sceptical · demo fixture");
     assert.equal(
       JSON.parse(localStorage.getItem(STORAGE_KEY)).users[0].compute_credits,
@@ -426,14 +423,14 @@ test("private Studio unlocks, fixes intent, shows percentage and preserves reque
     render(React.createElement(App));
     change("Studio access code", "private-test-access-code-32-characters");
     click("Open Studio");
-    await screen.findByRole("heading", { name: "New strategic dialogue" });
+    await screen.findByRole("heading", { name: "New conversation" });
     assert.match(screen.getByText(/Usage remaining/).textContent, /100%/);
     assert.equal(screen.queryByText(/CRD/), null);
-    change("Proposition", "Leadership coaching programme");
-    change("Target decision", "Agree to a discovery workshop");
-    click("Start dialogue");
+    change("What are you offering?", "Leadership coaching programme");
+    change("What next step are you testing?", "Agree to a discovery workshop");
+    click("Start conversation");
     await screen.findByText("Agree to a discovery workshop");
-    change("Your strategic message", "A six-week implementation");
+    change("Your message", "A six-week implementation");
     click("Send message");
     await screen.findAllByText("Provider temporarily unavailable");
     fail = false;
@@ -447,9 +444,9 @@ test("private Studio unlocks, fixes intent, shows percentage and preserves reque
       1,
     );
     assert.equal(localStorage.getItem(STORAGE_KEY), null);
-    click("Expand Analytics");
+    click("Buyer insights");
     await screen.findByText("Decision readiness");
-    await screen.findByText("JEV · completed exchange");
+    await screen.findByText("Latest reply assessed");
     click("Lock Studio");
     assert.equal(
       screen.queryByText("I need evidence before progressing."),
@@ -498,12 +495,12 @@ test("persona manager creates, edits, duplicates and archives while demo convers
         null,
       ),
     );
-    click("New Strategic Dialogue");
+    click("New conversation");
     assert.equal(
       screen.queryByRole("button", { name: /Alex Updated VP/ }),
       null,
     );
-    click(/Dialogue with Alex Vance/);
+    click(/Conversation with Alex Vance/);
     assert.ok(screen.getByRole("heading", { name: "Alex Vance" }));
     click("Manage personas");
     click("Archived (1)");
@@ -671,7 +668,7 @@ test("private persona saves retry with the same identity and stale edits keep th
     render(React.createElement(App));
     change("Studio access code", "private-test-access-code-32-characters");
     click("Open Studio");
-    await screen.findByRole("heading", { name: "New strategic dialogue" });
+    await screen.findByRole("heading", { name: "New conversation" });
     assert.ok(screen.getByLabelText("Persona"));
     click("Create persona");
     click("Build manually");
@@ -716,5 +713,413 @@ test("private persona saves retry with the same identity and stale edits keep th
     window.confirm = confirm;
     window.location.hash = "";
     sessionStorage.clear();
+  }
+});
+
+test("saved replies unlock drafting while insights remain serialised; an analysis-only retry preserves the draft and bills once", async () => {
+  const {
+    MemoryRepository,
+    configure,
+    conversation,
+    jevResponse,
+    geminiResponse,
+  } = await import("./helpers.mjs");
+  const { studio } = await import("../server/studio.ts");
+  const { runOperation } = await import("../server/turn.ts");
+  const { clearDrafts, readDrafts } =
+    await import("../src/services/draftService.ts");
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+  const generation = deferred(),
+    savedSnapshot = deferred(),
+    assessment = deferred();
+  configure();
+  clearDrafts();
+  localStorage.clear();
+  const repo = new MemoryRepository();
+  const c = await conversation(repo);
+  const original = globalThis.fetch;
+  let generations = 0,
+    holdSnapshot = false,
+    assessmentRequests = 0;
+  const dialogueIds = [],
+    assessmentIds = [];
+  window.location.hash = "#private";
+  globalThis.fetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    if (url === "/api/studio") {
+      const result = await studio(body, repo);
+      if (holdSnapshot) {
+        holdSnapshot = false;
+        await savedSnapshot.promise;
+      }
+      return Response.json(result);
+    }
+    if (url === "/api/dialogue") dialogueIds.push(body.requestId);
+    if (url === "/api/assessment") {
+      assessmentRequests++;
+      assessmentIds.push(body.requestId);
+      if (assessmentRequests === 1) {
+        await assessment.promise;
+        return Response.json(
+          { error: "Analysis service temporarily unavailable" },
+          { status: 503 },
+        );
+      }
+    }
+    const result = await runOperation(
+      url === "/api/dialogue" ? "dialogue" : "assessment",
+      body,
+      repo,
+      {
+        jev: async () => jevResponse(),
+        gemini: async () => {
+          generations++;
+          await generation.promise;
+          holdSnapshot = true;
+          return geminiResponse("Yes, subject to reviewing the scope.");
+        },
+      },
+    );
+    // An assessment response may be lost even though it was saved. Refresh is authoritative.
+    if (url === "/api/assessment")
+      throw new TypeError("Assessment response lost");
+    return Response.json(result);
+  };
+  try {
+    render(React.createElement(App));
+    change("Studio access code", "private-test-access-code-32-characters");
+    click("Open Studio");
+    await screen.findByLabelText("Your message");
+    change("Your message", "Review this proposal.");
+    click("Send message");
+    await screen.findByText(/is replying/);
+    assert.equal(screen.getByLabelText("Your message").disabled, true);
+    await act(async () => generation.resolve());
+    await screen.findByText("Loading the saved reply…");
+    assert.equal(
+      screen.queryByText("Yes, subject to reviewing the scope."),
+      null,
+    );
+    await act(async () => savedSnapshot.resolve());
+    await screen.findByText("Yes, subject to reviewing the scope.");
+    await screen.findByText(/Reply saved. Updating buyer insights/);
+    assert.equal(screen.getByLabelText("Your message").disabled, false);
+    const draft = "  Here is the scope\n\nwith a clear handover.  ";
+    change("Your message", draft);
+    assert.equal(
+      screen.getByRole("button", { name: "Send message" }).disabled,
+      true,
+    );
+    fireEvent.keyDown(screen.getByLabelText("Your message"), { key: "Enter" });
+    fireEvent.submit(document.querySelector(".composer"));
+    assert.equal(dialogueIds.length, 1);
+    assert.equal(readDrafts().texts[c], draft);
+    click("Buyer insights");
+    await screen.findByText("Updating insights for the saved reply…");
+    await act(async () => assessment.resolve());
+    await screen.findByText(
+      "Your reply is saved. Insights could not be updated.",
+    );
+    assert.equal(document.querySelector(".workspace > .error"), null);
+    assert.equal(screen.getByLabelText("Your message").value, draft);
+    click("Retry insights");
+    await screen.findByText("Latest reply assessed");
+    await waitFor(() =>
+      assert.equal(
+        screen.getByRole("button", { name: "Send message" }).disabled,
+        false,
+      ),
+    );
+    assert.equal(
+      screen.queryByText("Reply saved. Buyer insights need another try."),
+      null,
+    );
+    assert.equal(generations, 1);
+    assert.equal(repo.state.data.messages.length, 2);
+    assert.equal(repo.state.operations.length, 2);
+    assert.equal(assessmentRequests, 2);
+    assert.equal(assessmentIds[0], assessmentIds[1]);
+    assert.equal(readDrafts().texts[c], draft);
+    cleanup();
+    render(React.createElement(App));
+    change("Studio access code", "private-test-access-code-32-characters");
+    click("Open Studio");
+    await screen.findByLabelText("Your message");
+    assert.equal(screen.getByLabelText("Your message").value, draft);
+  } finally {
+    generation.resolve();
+    savedSnapshot.resolve();
+    assessment.resolve();
+    cleanup();
+    globalThis.fetch = original;
+    window.location.hash = "";
+    clearDrafts();
+  }
+});
+
+test("chat profiles use the frozen buyer; insights and mobile navigation restore keyboard focus", async () => {
+  localStorage.clear();
+  window.location.hash = "";
+  try {
+    render(React.createElement(App));
+    click(/Alex Vance/);
+    const profile = screen.getByRole("region", {
+      name: "Conversation persona",
+    });
+    fireEvent.click(within(profile).getByText("View persona profile"));
+    assert.match(
+      profile.textContent,
+      /Later persona edits apply to new conversations/,
+    );
+    assert.match(profile.textContent, /VP|Budget sensitivity/);
+    change("Your message", "A practical proposal.");
+    click("Send message");
+    await screen.findByText(new RegExp(reply));
+    const bubble = screen.getByRole("article", {
+      name: "Message from Alex Vance",
+    });
+    assert.ok(within(bubble).getByText("Alex Vance"));
+    assert.doesNotMatch(bubble.textContent, /gemini|JEV|· Demo/);
+    const insights = screen.getByRole("button", { name: "Buyer insights" });
+    insights.focus();
+    fireEvent.click(insights);
+    assert.equal(
+      document.activeElement,
+      screen.getByRole("button", { name: "Close insights" }),
+    );
+    fireEvent.keyDown(document.activeElement, { key: "Escape" });
+    assert.equal(document.activeElement, insights);
+    const nav = screen.getByRole("button", { name: "Open navigation" });
+    nav.focus();
+    fireEvent.click(nav);
+    const dialog = screen.getByRole("dialog", { name: "Navigation" });
+    const close = within(dialog).getByRole("button", {
+      name: "Close navigation",
+    });
+    assert.equal(document.activeElement, close);
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    assert.equal(
+      document.activeElement,
+      within(dialog).getByRole("combobox", { name: "Workspace mode" }),
+    );
+    fireEvent.keyDown(document.activeElement, { key: "Tab" });
+    assert.equal(document.activeElement, close);
+    fireEvent.keyDown(close, { key: "Escape" });
+    assert.equal(screen.queryByRole("dialog"), null);
+    assert.equal(document.activeElement, nav);
+  } finally {
+    cleanup();
+  }
+});
+
+test("insights mark earlier results, keep missing readiness empty, and link only verified buyer quotes", async () => {
+  const { TelemetryDrawer } =
+    await import("../src/components/TelemetryDrawer.tsx");
+  const state = {
+    version: 2,
+    phase: "post_reply",
+    evaluatedThrough: "old",
+    rubricVersion: "1906-decision-v3",
+    readinessIndex: null,
+    status: "unavailable",
+    stance: "conditional_agreement",
+    friction: "credibility",
+    remainingConditions: ["Comparable evidence"],
+    responseAction: "request_evidence",
+    evidenceStrength: 2.3,
+    dimensions: {
+      evidence_sufficiency: { value: 2.3, confidence: 0.8, status: "complete" },
+      frictionEvidence: {
+        status: "complete",
+        value: {
+          turnId: "old",
+          source: "memory",
+          quotes: [
+            "Has it worked in a comparable growth environment?",
+            "UNVERIFIED_QUOTE",
+          ],
+        },
+      },
+    },
+  };
+  const old = {
+    id: "old",
+    role: "assistant",
+    content: "Has it worked in a comparable growth environment?",
+    provider: "gemini",
+    telemetry_status: "complete",
+    evaluation: state,
+    telemetry,
+  };
+  const latest = {
+    ...old,
+    id: "new",
+    evaluation: undefined,
+    telemetry_status: "pending",
+  };
+  const props = {
+    open: true,
+    busy: false,
+    onClose() {},
+    onRetry() {},
+    previous: old,
+    message: latest,
+    messages: [old],
+    decision: { ...state, phase: "pre_reply", readinessIndex: 95 },
+  };
+  try {
+    render(React.createElement(TelemetryDrawer, props));
+    assert.ok(screen.getByText("Previous insights · not the latest exchange"));
+    assert.ok(screen.getByText("Not yet clear"));
+    assert.equal(screen.queryByText("81"), null);
+    assert.equal(screen.queryByText("95"), null);
+    assert.ok(
+      screen.getByText(/Clarify what made the earlier growth team comparable/),
+    );
+    assert.equal(document.body.textContent.includes("UNVERIFIED_QUOTE"), false);
+    const details = screen.getByText("Assessment details").closest("details");
+    assert.equal(details.open, false);
+    fireEvent.click(screen.getByText("Assessment details"));
+    assert.ok(screen.getByRole("button", { name: "View buyer message" }));
+    cleanup();
+    render(
+      React.createElement(TelemetryDrawer, {
+        ...props,
+        message: old,
+        decision: state,
+        replyPending: true,
+      }),
+    );
+    assert.ok(screen.getByText("Previous insights · not the latest exchange"));
+    assert.equal(screen.queryByText("Latest reply assessed"), null);
+    assert.equal(
+      screen.queryByRole("button", { name: "Update insights" }),
+      null,
+    );
+    cleanup();
+    function SourceFixture() {
+      const [open, setOpen] = React.useState(false);
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement(
+          "button",
+          { id: "analytics-toggle", onClick: () => setOpen(true) },
+          "Open source insights",
+        ),
+        React.createElement(
+          "article",
+          { id: "message-old", tabIndex: -1 },
+          old.content,
+        ),
+        React.createElement(TelemetryDrawer, {
+          ...props,
+          open,
+          message: old,
+          decision: state,
+          onClose: () => setOpen(false),
+        }),
+      );
+    }
+    render(React.createElement(SourceFixture));
+    const trigger = screen.getByRole("button", {
+      name: "Open source insights",
+    });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByText("Assessment details"));
+    click("View buyer message");
+    await waitFor(() =>
+      assert.equal(document.activeElement?.id, "message-old"),
+    );
+    assert.equal(
+      screen.queryByRole("complementary", { name: "Buyer insights" }),
+      null,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("Enter sends once while Shift+Enter and composition preserve editing", async () => {
+  const { ChatWorkspace } = await import("../src/components/ChatWorkspace.tsx");
+  const { createInitialData } =
+    await import("../src/services/storageService.ts");
+  localStorage.clear();
+  const sent = [];
+  try {
+    render(
+      React.createElement(ChatWorkspace, {
+        archetype: createInitialData(localStorage).archetypes[0],
+        messages: [],
+        provider: "demo",
+        busy: false,
+        pendingHere: false,
+        analyticsOpen: false,
+        onAnalytics() {},
+        onSend(t) {
+          sent.push(t);
+        },
+        onRetry() {},
+        onMenu() {},
+      }),
+    );
+    change("Your message", "A question\nwith context");
+    const input = screen.getByLabelText("Your message");
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    assert.equal(sent.length, 0);
+    assert.equal(input.value, "A question\nwith context");
+    fireEvent.keyDown(input, { key: "Enter" });
+    assert.deepEqual(sent, ["A question\nwith context"]);
+  } finally {
+    cleanup();
+  }
+});
+
+test("narrow-screen insights trap keyboard focus until dismissed and hide numerical details initially", async () => {
+  const { TelemetryDrawer } =
+    await import("../src/components/TelemetryDrawer.tsx");
+  const original = window.matchMedia;
+  window.matchMedia = () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  let dismissed = 0;
+  try {
+    render(
+      React.createElement(TelemetryDrawer, {
+        open: true,
+        busy: false,
+        message: { id: "demo", provider: "demo", telemetry },
+        onClose() {
+          dismissed++;
+        },
+        onRetry() {},
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Buyer insights" });
+    const close = within(dialog).getByRole("button", {
+      name: "Close insights",
+    });
+    assert.equal(document.activeElement, close);
+    fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
+    const summary = within(dialog).getByText("Assessment details");
+    assert.equal(document.activeElement, summary);
+    assert.equal(summary.parentElement.open, false);
+    fireEvent.keyDown(summary, { key: "Tab" });
+    assert.equal(document.activeElement, close);
+    fireEvent.keyDown(close, { key: "Escape" });
+    assert.equal(dismissed, 1);
+  } finally {
+    cleanup();
+    window.matchMedia = original;
   }
 });

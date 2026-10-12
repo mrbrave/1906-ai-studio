@@ -36,7 +36,7 @@ export function Sidebar({
       </div>
       <div className="sidebar-actions">
         <button className="primary" disabled={disabled} onClick={onNew}>
-          <Plus size={18} /> New Strategic Dialogue
+          <Plus size={18} /> New conversation
         </button>
         <button className="secondary" disabled={disabled} onClick={onCreate}>
           <Sparkles size={18} /> Create persona
@@ -45,8 +45,8 @@ export function Sidebar({
           <Users size={18} /> Manage personas
         </button>
       </div>
-      <nav aria-label="Recent dialogues" className="history">
-        <h2 className="eyebrow">Recent dialogues</h2>
+      <nav aria-label="Recent conversations" className="history">
+        <h2 className="eyebrow">Recent conversations</h2>
         {!data.conversations.length && (
           <p className="muted text-sm px-2">Your next decision starts here.</p>
         )}
@@ -80,7 +80,7 @@ export function Sidebar({
       </nav>
       <div className="engine-control">
         <label htmlFor="provider" className="eyebrow">
-          Dialogue engine
+          Workspace mode
         </label>
         <select
           id="provider"
@@ -89,7 +89,7 @@ export function Sidebar({
           onChange={(e) => onProvider(e.target.value as Provider)}
         >
           <option value="demo">Demo · illustrative only</option>
-          <option value="gemini">Gemini + JEV · private testing</option>
+          <option value="gemini">Private Studio · AI simulation</option>
         </select>
       </div>
       <footer className="profile">

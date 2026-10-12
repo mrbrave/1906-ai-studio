@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { PersonaContext } from "./PersonaContext";
 import { ArrowUp, BarChart3, Menu } from "lucide-react";
 import type { Archetype, Message, Provider } from "../types/database.types";
+export type ReplyPhase = "idle" | "generating" | "saving" | "analysing";
 interface Props {
   archetype: Archetype;
   messages: Message[];
   provider: Provider;
   busy: boolean;
   pendingHere: boolean;
+  phase?: ReplyPhase;
+  draftDisabled?: boolean;
+  insightError?: boolean;
+  sendBlockedReason?: string;
   analyticsOpen: boolean;
   onAnalytics: () => void;
   onSend: (text: string) => void;
@@ -21,6 +27,10 @@ export function ChatWorkspace({
   provider,
   busy,
   pendingHere,
+  phase = pendingHere ? "generating" : "idle",
+  draftDisabled = busy,
+  insightError = false,
+  sendBlockedReason,
   analyticsOpen,
   onAnalytics,
   onSend,
@@ -33,10 +43,24 @@ export function ChatWorkspace({
   const text = draft ?? localText;
   const limit = provider === "demo" ? 16000 : 4000;
   const setText = onDraft ?? setLocalText;
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const lastPhase = useRef(phase);
+  useEffect(() => {
+    if (
+      lastPhase.current !== phase &&
+      phase === "analysing" &&
+      !draftDisabled
+    ) {
+      const active = document.activeElement;
+      if (active === document.body || active?.closest(".composer"))
+        composer.current?.focus();
+    }
+    lastPhase.current = phase;
+  }, [phase, draftDisabled]);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
-  }, [messages, busy]);
+  }, [messages.at(-1)?.id, phase === "generating"]);
   function send() {
     if (text.trim() && !busy && text.length <= limit) {
       onSend(text);
@@ -70,20 +94,21 @@ export function ChatWorkspace({
           onClick={onAnalytics}
         >
           <BarChart3 size={16} />
-          <span>{analyticsOpen ? "Close Analytics" : "Expand Analytics"}</span>
+          <span>Buyer insights</span>
         </button>
       </header>
+      <PersonaContext persona={archetype} frozen />
       <div
         className="chat-stream"
         role="log"
-        aria-label="Strategic dialogue"
+        aria-label="Conversation"
         aria-live="polite"
       >
         <p className="session-label">
-          Strategic dialogue <span> / </span>{" "}
+          Buyer simulation <span> / </span>{" "}
           {provider === "demo"
             ? "Demo mode · illustrative responses and scores"
-            : "Private testing · JEV decision → Gemini reply"}
+            : "A simulated buyer, not real customer feedback"}
         </p>
         {!messages.length && (
           <div className="welcome">
@@ -95,15 +120,22 @@ export function ChatWorkspace({
             </h2>
             <p>
               Explore how {archetype.name} might respond to your proposition.
-              Start with your message, then use analytics to refine it.
+              Start with your message, then explore what matters to this buyer.
             </p>
             <div className="starter-prompts">
               {[
-                "Challenge my value proposition",
-                "Test a pricing pitch",
-                "Explore buyer objections",
+                "Here’s what we’re offering",
+                "The price includes",
+                "What matters most to you",
               ].map((s) => (
-                <button key={s} onClick={() => setText(s + ": ")}>
+                <button
+                  key={s}
+                  disabled={draftDisabled}
+                  onClick={() => {
+                    setText(s + ": ");
+                    composer.current?.focus();
+                  }}
+                >
                   {s} ↗
                 </button>
               ))}
@@ -113,6 +145,10 @@ export function ChatWorkspace({
         {messages.map((m) => (
           <div
             key={m.id}
+            id={`message-${m.id}`}
+            tabIndex={-1}
+            role="article"
+            aria-label={`Message from ${m.role === "user" ? "you" : archetype.name}`}
             className={`message-row ${m.role === "user" ? "user-row" : ""}`}
           >
             {m.role === "assistant" && (
@@ -123,11 +159,10 @@ export function ChatWorkspace({
             <div
               className={`message ${m.role === "user" ? "bubble-user" : "bubble-persona"}`}
             >
-              <p>{m.content}</p>
-              <small>
-                {m.role === "user" ? "You" : archetype.name} ·{" "}
-                {m.provider === "demo" ? "Demo" : m.provider}
+              <small className="message-speaker">
+                {m.role === "user" ? "You" : archetype.name}
               </small>
+              <p>{m.content}</p>
               {m.status === "failed" && (
                 <div className="message-failure">
                   <p>{m.error}</p>
@@ -141,14 +176,36 @@ export function ChatWorkspace({
             </div>
           </div>
         ))}
-        {pendingHere && (
-          <p className="working" role="status">
-            {messages.at(-1)?.role === "assistant"
-              ? "Saving decision and reply…"
-              : `${archetype.name} is considering your pitch…`}
-          </p>
+        {(phase === "generating" || phase === "saving") && (
+          <div className="working" role="status">
+            <span className="typing-dots" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            {phase === "saving"
+              ? "Loading the saved reply…"
+              : `${archetype.name} is replying…`}
+          </div>
         )}
         <div ref={end} />
+      </div>
+      <div className="chat-status" role="status">
+        {phase === "analysing"
+          ? "Reply saved. Updating buyer insights… You can draft your next message."
+          : insightError
+            ? "Reply saved. Buyer insights need another try."
+            : sendBlockedReason}
+        {insightError && phase !== "analysing" && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!analyticsOpen) onAnalytics();
+            }}
+          >
+            View insights
+          </button>
+        )}
       </div>
       <form
         className="composer"
@@ -159,13 +216,15 @@ export function ChatWorkspace({
       >
         <div className="composer-inner">
           <label className="sr-only" htmlFor="pitch">
-            Your strategic message
+            Your message
           </label>
           <textarea
             id="pitch"
+            ref={composer}
+            aria-describedby="composer-help"
             rows={3}
             value={text}
-            disabled={busy}
+            disabled={draftDisabled}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (
@@ -177,7 +236,7 @@ export function ChatWorkspace({
                 send();
               }
             }}
-            placeholder={`Present your proposition to ${archetype.name.split(" ")[0]}…`}
+            placeholder={`Message ${archetype.name.split(" ")[0]}…`}
           />
           <button
             className="send"
@@ -187,13 +246,21 @@ export function ChatWorkspace({
             <ArrowUp size={22} />
           </button>
         </div>
-        <p>
+        <p id="composer-help">
           {text.length.toLocaleString()} / {limit.toLocaleString()} characters ·{" "}
           {provider === "demo"
             ? "15 demo CRD per completed reply"
-            : "JEV guidance + Gemini reply + JEV assessment · metered usage"}
+            : "Usage is metered"}
           <span>Enter to send · Shift + Enter for a new line</span>
         </p>
+        <details className="chat-technical">
+          <summary>Technical details</summary>
+          <p>
+            {provider === "demo"
+              ? "Demo responses and insights use illustrative fixtures."
+              : "JEV provides guidance before Gemini’s reply, then assesses the saved exchange. Sending waits until the current request finishes."}
+          </p>
+        </details>
       </form>
     </div>
   );

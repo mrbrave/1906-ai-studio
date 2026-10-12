@@ -27,7 +27,10 @@ import {
 } from "../services/draftService";
 import { ResponseError, setStudioAccessCode } from "../api/http";
 import { Sidebar } from "./Sidebar";
-import { ChatWorkspace } from "./ChatWorkspace";
+import { PersonaContext } from "./PersonaContext";
+import { StudioNavigation } from "./StudioNavigation";
+import { completedAssessment } from "../services/buyerInsights";
+import { ChatWorkspace, type ReplyPhase } from "./ChatWorkspace";
 import { TelemetryDrawer } from "./TelemetryDrawer";
 import { ArchetypeSynthesizer } from "./ArchetypeSynthesizer";
 export function LiveStudio({ onExit }: { onExit: () => void }) {
@@ -36,6 +39,13 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const [activity, setActivity] = useState<{
+    conversationId: string;
+    phase: ReplyPhase;
+  } | null>(null);
+  const [assessmentErrors, setAssessmentErrors] = useState<
+    Record<string, string>
+  >({});
   const [drafts, setDrafts] = useState(() => readDrafts().texts);
   const [draftWarning, setDraftWarning] = useState(false);
   const [continuation, setContinuation] = useState<string | null>(null);
@@ -133,12 +143,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     lock.current = true;
     setBusy(true);
     setError("");
+    ++refreshSequence.current;
     try {
       await work();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Studio request failed.");
     } finally {
       setBusy(false);
+      setActivity(null);
       lock.current = false;
     }
   }
@@ -169,7 +181,36 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
       }
     });
   }
+  async function updateInsights(
+    conversationId: string,
+    reply: Message,
+    version: number,
+  ) {
+    setActivity({ conversationId, phase: "analysing" });
+    setAssessmentErrors((errors) => ({ ...errors, [reply.id]: "" }));
+    try {
+      await assessReply(conversationId, reply.id, version);
+    } catch (e) {
+      setAssessmentErrors((errors) => ({
+        ...errors,
+        [reply.id]:
+          e instanceof Error ? e.message : "Insights could not be updated.",
+      }));
+    } finally {
+      try {
+        await refresh();
+      } catch {
+        setAssessmentErrors((errors) => ({
+          ...errors,
+          [reply.id]:
+            errors[reply.id] ||
+            "Could not load the latest insights. Refresh status to check whether the assessment was saved.",
+        }));
+      }
+    }
+  }
   async function send(pitch: string, retry?: Message) {
+    if (lock.current) return;
     const c = snapshot?.conversations.find((c) => c.id === activeId);
     if (!c) return;
     if (
@@ -178,7 +219,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         pending.current.pitch !== pitch)
     ) {
       setError(
-        "Recover the previous request in its original dialogue before sending a different message.",
+        "Recover the previous request in its original conversation before sending a different message.",
       );
       return;
     }
@@ -199,6 +240,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     writePending(attempt);
     if (!retry) draft(c.id, attempt.pitch);
     await act(async () => {
+      setActivity({ conversationId: c.id, phase: "generating" });
+      let current: LiveSnapshot | undefined;
       let rejectedBeforeAdmission = false;
       try {
         await liveTurn(
@@ -215,7 +258,9 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           e instanceof ResponseError && e.status >= 400 && e.status < 500;
         throw e;
       } finally {
+        setActivity({ conversationId: c.id, phase: "saving" });
         const next = await refresh();
+        current = next;
         if (
           (rejectedBeforeAdmission &&
             !next.operations.some((o) => o.id === attempt.id)) ||
@@ -233,21 +278,15 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
             draft(c.id, "");
         }
       }
-      const current = await refresh();
-      const reply = current.data.messages
+      const reply = current!.data.messages
         .filter((m) => m.conversation_id === c.id && m.role === "assistant")
         .at(-1);
-      if (reply && reply.telemetry_status !== "complete") {
-        try {
-          await assessReply(
-            c.id,
-            reply.id,
-            current.conversations.find((x) => x.id === c.id)!.version,
-          );
-        } finally {
-          await refresh();
-        }
-      }
+      if (reply && reply.telemetry_status !== "complete")
+        await updateInsights(
+          c.id,
+          reply,
+          current!.conversations.find((x) => x.id === c.id)!.version,
+        );
     });
   }
   if (!snapshot)
@@ -298,25 +337,29 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   );
   const latest = messages.filter((m) => m.role === "assistant").at(-1);
   const previousAssessment = messages
-    .filter(
-      (m) =>
-        m.evaluation?.phase === "post_reply" &&
-        m.telemetry_status === "complete",
-    )
+    .filter((m) => completedAssessment(m))
     .at(-1);
   const unfinished = snapshot.operations.find(
     (o) => o.status === "running" || o.status === "uncertain",
   );
+  const phase =
+    activity?.conversationId === c?.id ? (activity?.phase ?? "idle") : "idle";
+  const replyPending =
+    phase === "generating" ||
+    phase === "saving" ||
+    messages.at(-1)?.role === "user";
+  const sendBlocked =
+    busy || !!unfinished || snapshot.usage.status !== "available";
+  const insightError =
+    latest &&
+    !completedAssessment(latest) &&
+    (assessmentErrors[latest.id] ||
+      (latest.telemetry_status === "failed"
+        ? (latest.error ?? "Insights could not be updated.")
+        : undefined));
   return (
     <div className="studio">
-      <div className={`navigation ${mobile ? "mobile-open" : ""}`}>
-        <button
-          className="nav-close"
-          aria-label="Close navigation"
-          onClick={() => setMobile(false)}
-        >
-          Close
-        </button>
+      <StudioNavigation open={mobile} onClose={() => setMobile(false)}>
         <Sidebar
           data={snapshot.data}
           disabled={busy || editorBusy}
@@ -346,8 +389,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
             })
           }
         />
-      </div>
-      <main className="workspace">
+      </StudioNavigation>
+      <main className="workspace" aria-hidden={mobile || undefined}>
         <div className="private-toolbar">
           <span>Private testing · Studio User</span>
           <button
@@ -455,11 +498,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           />
         ) : view === "new" || !c ? (
           <div className="new-dialogue">
-            <button className="text-button" onClick={() => setMobile(true)}>
+            <button
+              className="text-button mobile-menu"
+              onClick={() => setMobile(true)}
+            >
               Navigation
             </button>
             <p className="eyebrow">Set the decision you want to test</p>
-            <h1>New strategic dialogue</h1>
+            <h1>New conversation</h1>
             <form
               className="intent-form"
               onSubmit={(e) => {
@@ -493,8 +539,9 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                   ))}
                 </select>
               </label>
+              {selectedPersona && <PersonaContext persona={selectedPersona} />}
               <label>
-                Conversation objective
+                What do you want to learn?
                 <input
                   required
                   maxLength={1000}
@@ -505,10 +552,11 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                 />
               </label>
               <p className="muted">
-                What do you want to learn from the conversation?
+                For example, whether this offer addresses a problem they care
+                about.
               </p>
               <label>
-                Proposition
+                What are you offering?
                 <textarea
                   required
                   maxLength={2000}
@@ -523,21 +571,21 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                 Describe the offer, relevant details and success criteria.
               </p>
               <label>
-                Target decision
+                What next step are you testing?
                 <input
                   required
                   maxLength={1000}
                   value={intent.targetDecision}
-                  placeholder="For example: agree to a paid pilot using one RDL-owned module"
+                  placeholder="For example: agree to a demo"
                   onChange={(e) =>
                     setIntent({ ...intent, targetDecision: e.target.value })
                   }
                 />
               </label>
               <p className="muted">
-                Ask for one clear action. Put success criteria in the
-                proposition. This intent stays fixed for the conversation. Start
-                a new dialogue to test a different decision.
+                This conversation tests one next step. Start another
+                conversation to test a different decision. Include success
+                criteria with your offer.
               </p>
               {!selectedPersona && (
                 <p className="persona-note">
@@ -546,14 +594,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                 </p>
               )}
               <button className="primary" disabled={busy || !selectedPersona}>
-                Start dialogue
+                Start conversation
               </button>
             </form>
           </div>
         ) : (
           <>
             <div className="intent-summary">
-              <strong>Target decision:</strong> {c.intent.targetDecision}
+              <strong>Next step being tested:</strong> {c.intent.targetDecision}
             </div>
             {c.memory && (
               <details className="intent-summary">
@@ -582,7 +630,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
                 <summary>Reviewed continuation context</summary>
                 <p>{c.continuationSummary}</p>
                 <button onClick={() => setActiveId(c.continuationOf!)}>
-                  Open original dialogue
+                  Open original conversation
                 </button>
               </details>
             )}
@@ -646,12 +694,24 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               archetype={c.archetype}
               messages={messages}
               provider="gemini"
-              busy={
-                busy || !!unfinished || snapshot.usage.status === "exhausted"
+              busy={sendBlocked}
+              draftDisabled={busy && phase !== "analysing"}
+              phase={phase}
+              insightError={!!insightError}
+              sendBlockedReason={
+                unfinished
+                  ? "A request needs to finish or be reviewed before you can send. Your draft is kept here."
+                  : snapshot.usage.status === "exhausted"
+                    ? "Your usage allowance is exhausted. You can still draft a message."
+                    : snapshot.usage.status === "pending"
+                      ? "Usage is reserved for a pending request. Refresh status before sending."
+                      : snapshot.usage.status === "review_required"
+                        ? "Usage needs administrator review before sending. You can still draft a message."
+                        : undefined
               }
-              pendingHere={busy}
+              pendingHere={phase !== "idle"}
               analyticsOpen={drawer}
-              onAnalytics={() => setDrawer(!drawer)}
+              onAnalytics={() => setDrawer((value) => !value)}
               onSend={(text) => void send(text)}
               onRetry={(m) => void send(m.content, m)}
               onMenu={() => setMobile(true)}
@@ -662,16 +722,17 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               decision={latest?.evaluation ?? (latest ? c.state : null)}
               preDecision={c.state}
               previous={previousAssessment}
-              busy={busy}
+              messages={messages}
+              replyPending={replyPending}
+              analysing={phase === "analysing"}
+              assessmentError={insightError || undefined}
+              targetDecision={c.intent.targetDecision}
+              busy={sendBlocked}
               onClose={() => setDrawer(false)}
               onRetry={() =>
                 void act(async () => {
                   if (!latest) return;
-                  try {
-                    await assessReply(c.id, latest.id, c.version);
-                  } finally {
-                    await refresh();
-                  }
+                  await updateInsights(c.id, latest, c.version);
                 })
               }
             />
