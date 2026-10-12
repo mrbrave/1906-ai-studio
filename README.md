@@ -11,7 +11,7 @@ Use Node 24. `npm ci`, `npm test`, `npm run build`. `npm run dev` serves the off
 1. Create/use a dedicated Supabase test project. In its SQL Editor, run [`migrations/001_private_studio.sql`](migrations/001_private_studio.sql). It creates one private account row and two service-role-only RPC functions. There are no browser database credentials and no Supabase Auth accounts to create for this release.
 2. In **Vercel → project → Settings → Environment Variables**, configure the values below for the intended test environment. Use a separate Supabase project and allowance for Preview versus Production if both will run, so tests cannot consume the same ledger unintentionally.
 3. Redeploy the branch. Keep Vercel deployment protection enabled for private testing. The application access code also protects every paid API and saved conversation independently of deployment protection.
-4. Open the app, select **Gemini + JEV · private testing**, enter the Studio access code, then create a conversation with its proposition, objective and target decision.
+4. Open the app, select **Private Studio · AI simulation**, enter the Studio access code, then create a conversation with its proposition, objective and target decision.
 5. Send a controlled message, check its decision readiness and verify both providers' usage in the private database. An actual provider smoke test and billing reconciliation are required before treating the test setup as verified.
 
 | Variable                    | Value                                                                         |
@@ -37,7 +37,7 @@ The `10` above is an example, not an allocated amount. Increase `STUDIO_BUDGET_U
 
 The buyer's immutable persona and intent, bounded working context and latest decision state reach JEV on every turn. New conversations use the versioned V3 rubric with separate readiness (0–4 × 25), supporting evidence (0–4), assessment grounding (0–1), sentiment, friction and per-dimension statuses. Optional private motivational alignment/relevance results stay in private operation records and do not enter Gemini's reply context or public JSON. Low-confidence readiness is provisional; missing/invalid readiness is unavailable with a reason. Buyer-turn evidence is required for stance and concern resolution. Seller reassurance alone cannot establish acceptance. These private-test rubrics are not a validated model of real-world conversion.
 
-After the reply is committed, the browser calls `POST /api/assessment` with the latest reply ID and conversation version. This metered JEV-only call sees the completed exchange and updates observed telemetry without generating another reply. Pending/failed telemetry labels the previous completed assessment, and assessment can be retried independently. Stale results cannot overwrite newer versions. Pre-reply guidance remains available separately. Closing the tab before assessment requires **Assess latest reply** after unlocking; there is no background job.
+After the reply is committed, the browser calls `POST /api/assessment` with the latest reply ID and conversation version. This metered JEV-only call sees the completed exchange and updates observed telemetry without generating another reply. Pending/failed telemetry labels the previous completed assessment, and assessment can be retried independently. Stale results cannot overwrite newer versions. Pre-reply guidance remains available separately. Closing the tab before assessment requires **Update insights** after unlocking; there is no background job.
 
 `/api/evaluate` is retired (410); live dialogue cannot bypass JEV. AI archetype generation also uses the ledger and access gate. OpenAI live selection has been removed for this Gemini/JEV test stage. Manual archetype configuration is still available.
 
@@ -91,6 +91,10 @@ Official references verified 5 October 2026:
 - https://ai.google.dev/gemini-api/docs/tokens
 - https://ai.google.dev/gemini-api/docs/pricing
 - https://supabase.com/docs/guides/database/functions
+
+## Chat and buyer insights
+
+See [step 5: chat and buyer insights](docs/chat-insights-step-5.md) for persona previews, the simplified insights panel, honest reply/analysis status and analysis-only recovery. You can draft after the saved reply appears while insights update; sending remains serialised. Suggestions use verified buyer statements and existing public decision state, with no additional model call. The visual system and historical data are retained. No database migration or new environment variable is required.
 
 ## Evaluation and continuity review
 

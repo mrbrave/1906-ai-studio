@@ -12,7 +12,8 @@ import {
 } from "./services/personaManagement";
 import { LiveStudio } from "./components/LiveStudio";
 import { useRef, useState } from "react";
-import { X, ArrowLeft } from "lucide-react";
+import { StudioNavigation } from "./components/StudioNavigation";
+import { ArrowLeft } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWorkspace } from "./components/ChatWorkspace";
 import { TelemetryDrawer } from "./components/TelemetryDrawer";
@@ -116,7 +117,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
       user_id: data!.users[0].id,
       archetype_id: archetype.id,
       archetype_snapshot: structuredClone(archetype),
-      title: `Dialogue with ${archetype.name}`,
+      title: `Conversation with ${archetype.name}`,
       created_at: now(),
       updated_at: now(),
     };
@@ -247,7 +248,8 @@ function DemoApp({ onLive }: { onLive: () => void }) {
         ),
       }));
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Dialogue failed.";
+      const message =
+        e instanceof Error ? e.message : "The reply could not be completed.";
       update((d) => ({
         ...d,
         messages: d.messages.map((m) =>
@@ -283,14 +285,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
   }
   return (
     <div className="studio">
-      <div className={`navigation ${mobileNav ? "mobile-open" : ""}`}>
-        <button
-          className="nav-close"
-          onClick={() => setMobileNav(false)}
-          aria-label="Close navigation"
-        >
-          <X />
-        </button>
+      <StudioNavigation open={mobileNav} onClose={() => setMobileNav(false)}>
         <Sidebar
           data={data}
           disabled={editorBusy}
@@ -321,15 +316,8 @@ function DemoApp({ onLive }: { onLive: () => void }) {
             })
           }
         />
-      </div>
-      {mobileNav && (
-        <button
-          className="nav-backdrop"
-          aria-label="Close navigation"
-          onClick={() => setMobileNav(false)}
-        />
-      )}
-      <main className="workspace">
+      </StudioNavigation>
+      <main className="workspace" aria-hidden={mobileNav || undefined}>
         {(error || storageError) && (
           <div role="alert" className="error">
             {error || storageError}
@@ -363,7 +351,10 @@ function DemoApp({ onLive }: { onLive: () => void }) {
           />
         ) : view === "new" || !archetype ? (
           <div className="new-dialogue">
-            <button className="text-button" onClick={() => setMobileNav(true)}>
+            <button
+              className="text-button mobile-menu"
+              onClick={() => setMobileNav(true)}
+            >
               <ArrowLeft size={16} /> Navigation
             </button>
             <p className="eyebrow">1906.au / Strategic studio</p>
@@ -373,7 +364,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
               with better questions.
             </h1>
             <p className="muted">
-              Choose a persona. Pressure-test your next proposition.
+              Choose a persona to explore how they might respond to your offer.
             </p>
             {!data.archetypes.some((a) => !a.archived_at) && (
               <p className="persona-note">
@@ -409,6 +400,13 @@ function DemoApp({ onLive }: { onLive: () => void }) {
               provider={provider}
               busy={pending !== null}
               pendingHere={pending === activeId}
+              phase={
+                pending === activeId
+                  ? messages.at(-1)?.role === "assistant"
+                    ? "saving"
+                    : "generating"
+                  : "idle"
+              }
               analyticsOpen={drawer}
               onAnalytics={() => (drawer ? closeDrawer() : setDrawer(true))}
               onSend={(text) => void send(text)}
@@ -418,6 +416,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
             <TelemetryDrawer
               open={drawer}
               message={currentTelemetry}
+              messages={messages}
               busy={pending === activeId}
               onClose={closeDrawer}
               onRetry={() => {}}

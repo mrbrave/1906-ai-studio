@@ -62,7 +62,7 @@ export async function studio(value: unknown, repo: Repository) {
       summary = nonEmpty(b.summary, 8000);
     await mutate(repo, (s) => {
       const source = s.conversations.find((c) => c.id === sourceId);
-      if (!source) throw new HttpError(404, "Source dialogue not found.");
+      if (!source) throw new HttpError(404, "Source conversation not found.");
       const existing = s.conversations.find((c) => c.id === key);
       if (existing) {
         if (
@@ -246,7 +246,7 @@ export async function studio(value: unknown, repo: Repository) {
         id: key,
         user_id: STUDIO_USER,
         archetype_id: a.id,
-        title: `Dialogue with ${a.name}`,
+        title: `Conversation with ${a.name}`,
         created_at: now,
         updated_at: now,
       });
