@@ -798,6 +798,8 @@ test("saved replies unlock drafting while insights remain serialised; an analysi
     await screen.findByLabelText("Your message");
     change("Your message", "Review this proposal.");
     click("Send message");
+    await screen.findByText("Review this proposal.");
+    assert.equal(screen.getByRole("article", { name: "Message from you" }).textContent.includes("Sending"), true);
     await screen.findByText(/is replying/);
     assert.equal(screen.getByLabelText("Your message").disabled, true);
     await act(async () => generation.resolve());

@@ -40,6 +40,7 @@ export function publicDraft(a: ArchetypeDraft): ArchetypeDraft {
   return {
     ...fields(a, [
       "name",
+      "avatar",
       "role",
       "budget_sensitivity",
       "system_prompt",

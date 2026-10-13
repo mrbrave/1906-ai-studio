@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, ArrowLeft } from "lucide-react";
+import { AVATAR_OPTIONS, DEFAULT_AVATAR, avatarEmoji } from "../api/avatar";
 import type { Provider } from "../types/database.types";
 import type { ArchetypeDraft } from "../api/contracts";
 import { synthesiseArchetype } from "../api/gemini.client";
@@ -14,6 +15,7 @@ import {
 
 const EMPTY: ArchetypeDraft = {
   name: "",
+  avatar: DEFAULT_AVATAR,
   role: "",
   budget_sensitivity: "Medium",
   system_prompt: "",
@@ -129,7 +131,7 @@ export function ArchetypeSynthesizer({
         provider,
         request.current.id,
       );
-      setDraft({ ...result, system_prompt: editablePrompt(result) });
+      setDraft({ ...result, avatar: draft.avatar ?? DEFAULT_AVATAR, system_prompt: editablePrompt(result) });
       setOriginalProfile(result.profile);
       setInputs(profileInputs(result.profile));
       setGenerated(true);
@@ -303,6 +305,16 @@ export function ArchetypeSynthesizer({
                 time.
               </p>
               <div className="form-grid">
+                <div className="full">
+                  <label htmlFor="persona-avatar">Persona emoji</label>
+                  <div className="persona-emoji-picker" role="group" aria-label="Choose persona emoji">
+                    {AVATAR_OPTIONS.map((emoji) => (
+                      <button type="button" key={emoji} className="secondary" aria-label={`Choose ${emoji}`} aria-pressed={(draft.avatar ?? DEFAULT_AVATAR) === emoji} onClick={() => setDraft((d) => ({ ...d, avatar: emoji }))}>{emoji}</button>
+                    ))}
+                  </div>
+                  <input id="persona-avatar" aria-label="Custom persona emoji" value={draft.avatar ?? DEFAULT_AVATAR} onChange={(e) => setDraft((d) => ({ ...d, avatar: e.target.value }))} onBlur={() => { try { avatarEmoji(draft.avatar); } catch { setError("Choose a single emoji, or select one above."); } }} maxLength={24} />
+                  <p className="muted field-hint">Choose an emoji above or paste a single emoji. This is visual only and does not change persona behaviour.</p>
+                </div>
                 <label>
                   Full name
                   <input
