@@ -1,4 +1,5 @@
 import { PersonaManager } from "./components/PersonaManager";
+import { DEFAULT_AVATAR } from "./api/avatar";
 import { usePersonaNavigation } from "./components/usePersonaNavigation";
 import {
   personaEditorSession,
@@ -147,7 +148,7 @@ function DemoApp({ onLive }: { onLive: () => void }) {
         ...draft,
         id: editor.key,
         user_id: data!.users[0].id,
-        avatar: editor.persona?.avatar ?? "🎯",
+        avatar: draft.avatar ?? editor.persona?.avatar ?? DEFAULT_AVATAR,
         created_at: now(),
         profileRevision: 1,
       };
