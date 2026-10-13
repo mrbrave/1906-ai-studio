@@ -45,6 +45,7 @@ export function editPersona(
   const updated: Archetype = {
     ...persona,
     ...parseDraft(draft),
+    avatar: draft.avatar ?? persona.avatar,
     profileRevision: personaRevision(persona) + 1,
     updated_at: at,
   };
