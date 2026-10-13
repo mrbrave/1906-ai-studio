@@ -260,6 +260,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         writePending(null);
         draft(c.id, "");
       } catch (e) {
+        setOptimistic((old) => old && old.id === attempt.id ? { ...old, status: "failed", error: e instanceof Error ? e.message : "Message could not be delivered." } : old);
         rejectedBeforeAdmission =
           e instanceof ResponseError && e.status >= 400 && e.status < 500;
         throw e;
