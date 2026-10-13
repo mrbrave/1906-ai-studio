@@ -133,7 +133,9 @@ export function parseSynthesisedPersona(value: unknown, description?: string) {
     for (const key of PROFILE_FIELDS) {
       if (profile[key] === undefined) continue;
       const quote = quotes[key];
-      if (typeof quote !== "string" || quote.trim().length < 3 || !description.includes(quote.trim())) {
+      const directlyNamed = key === "preferredChannels" || key === "currentTools";
+      const items = directlyNamed && Array.isArray(profile[key]) ? profile[key] as string[] : [];
+      if (typeof quote !== "string" || quote.trim().length < 3 || !description.toLocaleLowerCase().includes(quote.trim().toLocaleLowerCase()) || (directlyNamed && items.some((item) => !description.toLocaleLowerCase().includes(item.trim().toLocaleLowerCase())))) {
         delete clean[key];
         delete clean.provenance[key];
         dropped.push(key);
