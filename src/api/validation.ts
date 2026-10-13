@@ -1,4 +1,5 @@
 import type { Telemetry } from "../types/database.types";
+import { avatarEmoji } from "./avatar.js";
 import type { ArchetypeDraft } from "./contracts";
 import { parseSynthesisReview } from "./synthesisReview.js";
 import {
@@ -50,6 +51,7 @@ export function parseDraft(value: unknown): ArchetypeDraft {
   )
     throw new Error("Persona profile requires supported schema version 2.");
   return {
+    ...(d.avatar !== undefined ? { avatar: avatarEmoji(d.avatar) } : {}),
     name: nonEmpty(d.name, 120),
     role: nonEmpty(d.role, 200),
     budget_sensitivity:
