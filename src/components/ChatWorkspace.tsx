@@ -163,6 +163,8 @@ export function ChatWorkspace({
                 {m.role === "user" ? "You" : archetype.name}
               </small>
               <p>{m.content}</p>
+              {m.role === "user" && m.status === "pending" && <small className="muted">Sending…</small>}
+              {m.role === "user" && m.status === "complete" && <small className="muted">Sent</small>}
               {m.status === "failed" && (
                 <div className="message-failure">
                   <p>{m.error}</p>
