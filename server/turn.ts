@@ -447,6 +447,7 @@ export async function runOperation(
           op.promptVersion === SYNTHESIS_VERSION
             ? parseSynthesisedPersona(
                 JSON.parse(completionText(raw, SYNTHESIS_JSON_CHARS)),
+                String(request.description),
               )
             : parseDraft(JSON.parse(completionText(raw)));
       } catch (e) {
