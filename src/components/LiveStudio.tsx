@@ -242,7 +242,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     setOptimistic({ id: attempt.id, conversation_id: c.id, role: "user", content: attempt.pitch, created_at: new Date().toISOString(), provider: "gemini", status: "pending", telemetry_status: "none", telemetry: null, error: null });
     setOptimisticReply(null);
     writePending(attempt);
-    if (!retry) draft(c.id, attempt.pitch);
+    if (!retry) draft(c.id, "");
     await act(async () => {
       setActivity({ conversationId: c.id, phase: "generating" });
       let current: LiveSnapshot | undefined;
@@ -260,6 +260,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         writePending(null);
         draft(c.id, "");
       } catch (e) {
+        draft(c.id, attempt.pitch);
         setOptimistic((old) => old && old.id === attempt.id ? { ...old, status: "failed", error: e instanceof Error ? e.message : "Message could not be delivered." } : old);
         rejectedBeforeAdmission =
           e instanceof ResponseError && e.status >= 400 && e.status < 500;
