@@ -39,6 +39,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const [optimistic, setOptimistic] = useState<Message | null>(null);
+  const [optimisticReply, setOptimisticReply] = useState<Message | null>(null);
   const [activity, setActivity] = useState<{
     conversationId: string;
     phase: ReplyPhase;
@@ -237,6 +239,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
           version: c.version,
         });
     pending.current = attempt;
+    setOptimistic({ id: attempt.id, conversation_id: c.id, role: "user", content: attempt.pitch, created_at: new Date().toISOString(), provider: "gemini", status: "pending", telemetry_status: "none", telemetry: null, error: null });
+    setOptimisticReply(null);
     writePending(attempt);
     if (!retry) draft(c.id, attempt.pitch);
     await act(async () => {
@@ -244,12 +248,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
       let current: LiveSnapshot | undefined;
       let rejectedBeforeAdmission = false;
       try {
-        await liveTurn(
+        const completed = await liveTurn(
           attempt.conversationId,
           attempt.pitch,
           attempt.version,
           attempt.id,
         );
+        setOptimisticReply({ id: completed.result.replyId, conversation_id: c.id, role: "assistant", content: completed.result.text, created_at: new Date().toISOString(), provider: "gemini", status: "complete", telemetry_status: "pending", telemetry: completed.result.telemetry, evaluation: completed.result.state, error: null });
+        setOptimistic((old) => old && old.id === attempt.id ? { ...old, status: "complete" } : old);
         pending.current = null;
         writePending(null);
         draft(c.id, "");
@@ -261,6 +267,8 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
         setActivity({ conversationId: c.id, phase: "saving" });
         const next = await refresh();
         current = next;
+        if (next.data.messages.some((m) => m.id === attempt.id)) setOptimistic(null);
+        if (next.data.messages.some((m) => m.id === optimisticReply?.id)) setOptimisticReply(null);
         if (
           (rejectedBeforeAdmission &&
             !next.operations.some((o) => o.id === attempt.id)) ||
@@ -332,9 +340,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   const activePersonas = snapshot.data.archetypes.filter((a) => !a.archived_at);
   const selectedPersona =
     activePersonas.find((a) => a.id === archetypeId) ?? activePersonas[0];
-  const messages = snapshot.data.messages.filter(
+  const savedMessages = snapshot.data.messages.filter(
     (m) => m.conversation_id === activeId,
   );
+  const messages = [
+    ...savedMessages,
+    ...(optimistic && optimistic.conversation_id === activeId && !savedMessages.some((m) => m.id === optimistic.id) ? [optimistic] : []),
+    ...(optimisticReply && optimisticReply.conversation_id === activeId && !savedMessages.some((m) => m.id === optimisticReply.id) ? [optimisticReply] : []),
+  ];
   const latest = messages.filter((m) => m.role === "assistant").at(-1);
   const previousAssessment = messages
     .filter((m) => completedAssessment(m))
