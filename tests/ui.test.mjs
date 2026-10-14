@@ -268,7 +268,6 @@ test("draft survives a preflight rejection and reload, can be edited, and an amb
     change("Your message", shorter);
     reject = false;
     click("Send message");
-    await screen.findByText("Network connection lost");
     await screen.findByText(
       "Commercial proposal received, subject to scope review.",
     );
@@ -277,8 +276,8 @@ test("draft survives a preflight rejection and reload, can be edited, and an amb
     assert.equal(repo.state.data.messages.length, 2);
     assert.equal(screen.getByLabelText("Your message").value, "");
     click("Buyer insights");
-    click("Update insights");
     await screen.findByText("Latest reply assessed");
+    assert.equal(screen.queryByText("Network connection lost"), null);
     assert.equal(generations, 1);
     assert.equal(repo.state.data.messages.length, 2);
   } finally {
@@ -799,13 +798,14 @@ test("saved replies unlock drafting while insights remain serialised; an analysi
     change("Your message", "Review this proposal.");
     click("Send message");
     await screen.findByText(/is replying/);
+    assert.ok(screen.getByText("Review this proposal."));
+    assert.ok(screen.getByText("Sending…"));
+    assert.equal(screen.getByLabelText("Your message").value, "");
     assert.equal(screen.getByLabelText("Your message").disabled, true);
     await act(async () => generation.resolve());
-    await screen.findByText("Loading the saved reply…");
-    assert.equal(
-      screen.queryByText("Yes, subject to reviewing the scope."),
-      null,
-    );
+    await screen.findByText("Refreshing conversation status…");
+    assert.ok(screen.getByText("Yes, subject to reviewing the scope."));
+    assert.equal(screen.getByLabelText("Your message").disabled, false);
     await act(async () => savedSnapshot.resolve());
     await screen.findByText("Yes, subject to reviewing the scope.");
     await screen.findByText(/Reply saved. Updating buyer insights/);
@@ -1123,3 +1123,250 @@ test("narrow-screen insights trap keyboard focus until dismissed and hide numeri
     window.matchMedia = original;
   }
 });
+
+test("emoji picker validates, saves, reopens and duplicates the selected visual", async () => {
+  localStorage.clear();
+  window.location.hash = "";
+  try {
+    render(React.createElement(App));
+    click("Create persona");
+    click("Build manually");
+    change("Full name", "Emoji buyer");
+    change("Role", "Founder");
+    change("Custom persona emoji", "not an emoji");
+    click("Save persona");
+    await screen.findByText("Persona avatar must be a single emoji.");
+    click("Choose 🐨");
+    assert.equal(
+      screen
+        .getByRole("button", { name: "Choose 🐨" })
+        .getAttribute("aria-pressed"),
+      "true",
+    );
+    click("Save persona");
+    const card = await screen.findByRole("article", { name: "Emoji buyer" });
+    assert.match(card.textContent, /🐨/);
+    fireEvent.click(within(card).getByRole("button", { name: "Edit" }));
+    assert.equal(screen.getByLabelText("Custom persona emoji").value, "🐨");
+    change("Custom persona emoji", "👩🏽‍💻");
+    click("Save persona");
+    const edited = await screen.findByRole("article", { name: "Emoji buyer" });
+    assert.match(edited.textContent, /👩🏽‍💻/);
+    fireEvent.click(within(edited).getByRole("button", { name: "Duplicate" }));
+    assert.equal(screen.getByLabelText("Custom persona emoji").value, "👩🏽‍💻");
+    click("Save persona");
+    assert.match(
+      (await screen.findByRole("article", { name: "Emoji buyer (copy)" }))
+        .textContent,
+      /👩🏽‍💻/,
+    );
+  } finally {
+    cleanup();
+    localStorage.clear();
+  }
+});
+
+for (const scenario of [
+  "saved-refresh-fails",
+  "lost-response-and-refresh",
+  "lost-response-replay",
+  "known-failure",
+  "running",
+  "uncertain",
+]) {
+  test(`chat recovery: ${scenario} preserves text and reconciles without duplicate generation`, async () => {
+    const {
+      MemoryRepository,
+      configure,
+      conversation,
+      jevResponse,
+      geminiResponse,
+    } = await import("./helpers.mjs");
+    const { studio } = await import("../server/studio.ts");
+    const { runOperation } = await import("../server/turn.ts");
+    const { clearDrafts, readDrafts } =
+      await import("../src/services/draftService.ts");
+    const { ProviderFailure } = await import("../server/model-http.ts");
+    configure();
+    clearDrafts();
+    localStorage.clear();
+    window.location.hash = "#private";
+    const repo = new MemoryRepository();
+    const cid = await conversation(repo);
+    const original = globalThis.fetch;
+    let generations = 0,
+      turns = 0,
+      failSnapshot = false;
+    const requests = [];
+    const pitch = "  Exact proposal\n\nAUD 4,500 + GST.  ";
+    globalThis.fetch = async (url, opts) => {
+      const b = JSON.parse(opts.body);
+      if (url === "/api/studio") {
+        if (failSnapshot) {
+          failSnapshot = false;
+          throw new TypeError("Refresh unavailable");
+        }
+        return Response.json(await studio(b, repo));
+      }
+      if (url === "/api/dialogue") {
+        turns++;
+        requests.push(b);
+      }
+      if (
+        url === "/api/dialogue" &&
+        turns === 1 &&
+        ["running", "uncertain"].includes(scenario)
+      ) {
+        repo.state.operations.push({
+          id: b.requestId,
+          conversationId: cid,
+          status: scenario,
+          attempts: [],
+          reserve: 0,
+        });
+        return Response.json(
+          { error: "Request needs a status check" },
+          { status: 409 },
+        );
+      }
+      try {
+        const result = await runOperation(
+          url === "/api/dialogue" ? "dialogue" : "assessment",
+          b,
+          repo,
+          {
+            jev: async () => jevResponse(),
+            gemini: async () => {
+              generations++;
+              if (scenario === "known-failure" && generations === 1)
+                throw new ProviderFailure("Temporarily unavailable", false);
+              return geminiResponse("I will review the scope.");
+            },
+          },
+        );
+        if (url === "/api/dialogue" && turns === 1) {
+          if (
+            [
+              "saved-refresh-fails",
+              "lost-response-and-refresh",
+              "lost-response-replay",
+            ].includes(scenario)
+          )
+            failSnapshot = true;
+          if (
+            ["lost-response-and-refresh", "lost-response-replay"].includes(
+              scenario,
+            )
+          )
+            throw new TypeError("Response lost");
+        }
+        return Response.json(result);
+      } catch (e) {
+        if (e instanceof TypeError) throw e;
+        return Response.json({ error: e.message }, { status: e.status ?? 503 });
+      }
+    };
+    try {
+      render(React.createElement(App));
+      change("Studio access code", "private-test-access-code-32-characters");
+      click("Open Studio");
+      await screen.findByLabelText("Your message");
+      change("Your message", pitch);
+      click("Send message");
+      await waitFor(() =>
+        assert.equal(
+          screen.getByRole("button", { name: "Refresh status" }).disabled,
+          false,
+        ),
+      );
+      if (scenario === "saved-refresh-fails") {
+        assert.ok(screen.getByText("I will review the scope."));
+        assert.ok(screen.getByText(/Your reply is saved. Could not refresh/));
+        assert.equal(screen.getByLabelText("Your message").value, "");
+        change("Your message", "My next question");
+        assert.equal(
+          screen.getByRole("button", { name: "Send message" }).disabled,
+          true,
+        );
+        click("Refresh status");
+        await waitFor(() =>
+          assert.equal(
+            screen.getByRole("button", { name: "Send message" }).disabled,
+            false,
+          ),
+        );
+        assert.equal(
+          screen.getByLabelText("Your message").value,
+          "My next question",
+        );
+      } else if (scenario === "lost-response-and-refresh") {
+        assert.equal(screen.getByLabelText("Your message").value, pitch);
+        assert.equal(readDrafts().pending.id, requests[0].requestId);
+        // Reload with an unresolved request: the persisted result wins on unlock.
+        cleanup();
+        render(React.createElement(App));
+        change("Studio access code", "private-test-access-code-32-characters");
+        click("Open Studio");
+        await screen.findByText("I will review the scope.");
+        assert.equal(readDrafts().pending, null);
+        assert.equal(screen.getByLabelText("Your message").value, "");
+      } else if (scenario === "lost-response-replay") {
+        assert.equal(readDrafts().pending.id, requests[0].requestId);
+        change("Your message", "A separate draft to keep");
+        click("Recover last request");
+        await screen.findByText("I will review the scope.");
+        await waitFor(() =>
+          assert.equal(
+            screen.getByRole("button", { name: "Refresh status" }).disabled,
+            false,
+          ),
+        );
+        assert.deepEqual(requests[1], requests[0]);
+        assert.equal(
+          screen.getByLabelText("Your message").value,
+          "A separate draft to keep",
+        );
+      } else if (scenario === "known-failure") {
+        assert.equal(screen.getByLabelText("Your message").value, pitch);
+        change("Your message", "A separate draft to keep");
+        click("Retry reply");
+        await screen.findByText("I will review the scope.");
+        await waitFor(() =>
+          assert.equal(
+            screen.getByRole("button", { name: "Refresh status" }).disabled,
+            false,
+          ),
+        );
+        assert.deepEqual(requests[1], requests[0]);
+        assert.equal(
+          screen.getByLabelText("Your message").value,
+          "A separate draft to keep",
+        );
+      } else {
+        assert.equal(readDrafts().pending.id, requests[0].requestId);
+        assert.equal(
+          screen.getByRole("button", { name: "Send message" }).disabled,
+          true,
+        );
+        assert.equal(
+          screen.queryByRole("button", { name: "Retry reply" }),
+          null,
+        );
+        assert.equal(generations, 0);
+        return;
+      }
+      assert.equal(
+        screen.getAllByRole("article", { name: "Message from you" }).length,
+        1,
+      );
+      assert.equal(screen.getAllByText("I will review the scope.").length, 1);
+      assert.equal(repo.state.data.messages.length, 2);
+      assert.equal(generations, scenario === "known-failure" ? 2 : 1);
+    } finally {
+      cleanup();
+      globalThis.fetch = original;
+      window.location.hash = "";
+      clearDrafts();
+    }
+  });
+}

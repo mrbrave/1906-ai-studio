@@ -39,6 +39,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [syncRequired, setSyncRequired] = useState(false);
+  function putLocal(message: Message) {
+    setLocalMessages((messages) => [
+      ...messages.filter((m) => m.id !== message.id),
+      message,
+    ]);
+  }
   const [activity, setActivity] = useState<{
     conversationId: string;
     phase: ReplyPhase;
@@ -135,7 +143,42 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   async function refresh() {
     const sequence = ++refreshSequence.current;
     const next = await liveSnapshot();
-    if (sequence === refreshSequence.current) setSnapshot(next);
+    if (sequence === refreshSequence.current) {
+      setSnapshot(next);
+      setSyncRequired(false);
+      setLocalMessages((messages) =>
+        messages.filter((local) => {
+          const saved = next.data.messages.find((m) => m.id === local.id);
+          return (
+            !saved ||
+            (local.status === "complete" && saved.status !== "complete")
+          );
+        }),
+      );
+      const attempt = pending.current;
+      const operation = next.operations.find((o) => o.id === attempt?.id);
+      if (
+        attempt &&
+        operation &&
+        ["complete", "failed"].includes(operation.status)
+      ) {
+        if (operation.status === "complete") {
+          setDrafts((values) => {
+            if (values[attempt.conversationId] !== attempt.pitch) return values;
+            writeDraft(attempt.conversationId, "");
+            return { ...values, [attempt.conversationId]: "" };
+          });
+        } else {
+          setDrafts((values) => {
+            if (values[attempt.conversationId]) return values;
+            writeDraft(attempt.conversationId, attempt.pitch);
+            return { ...values, [attempt.conversationId]: attempt.pitch };
+          });
+        }
+        pending.current = null;
+        writePending(null);
+      }
+    }
     return next;
   }
   async function act(work: () => Promise<void>) {
@@ -166,13 +209,14 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     await act(async () => {
       setStudioAccessCode(code);
       try {
+        const recoveringConversationId = pending.current?.conversationId;
         const next = await refresh();
         setCode("");
         setArchetypeId(
           next.data.archetypes.find((a) => !a.archived_at)?.id ?? "",
         );
         const first =
-          pending.current?.conversationId ?? next.conversations[0]?.id ?? null;
+          recoveringConversationId ?? next.conversations[0]?.id ?? null;
         setActiveId(first);
         setView(first ? "chat" : "new");
       } catch (e) {
@@ -223,72 +267,129 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
       );
       return;
     }
-    const attempt = retry
-      ? {
-          id: retry.id,
-          conversationId: c.id,
-          pitch: retry.content,
-          version: c.version,
-        }
-      : (pending.current ?? {
-          id: crypto.randomUUID(),
-          conversationId: c.id,
-          pitch,
-          version: c.version,
-        });
+    const attempt =
+      pending.current ??
+      (retry
+        ? {
+            id: retry.id,
+            conversationId: c.id,
+            pitch: retry.content,
+            version: c.version,
+          }
+        : {
+            id: crypto.randomUUID(),
+            conversationId: c.id,
+            pitch,
+            version: c.version,
+          });
     pending.current = attempt;
-    writePending(attempt);
-    if (!retry) draft(c.id, attempt.pitch);
+    if (!writePending(attempt)) setDraftWarning(true);
+    const userMessage: Message = {
+      id: attempt.id,
+      conversation_id: c.id,
+      role: "user",
+      content: attempt.pitch,
+      created_at: retry?.created_at ?? new Date().toISOString(),
+      provider: "gemini",
+      status: "pending",
+      telemetry_status: "none",
+      telemetry: null,
+      error: null,
+    };
+    putLocal(userMessage);
+    if (drafts[c.id] === attempt.pitch) draft(c.id, "");
     await act(async () => {
       setActivity({ conversationId: c.id, phase: "generating" });
+      let failure: unknown;
+      let delivered = false;
       let current: LiveSnapshot | undefined;
-      let rejectedBeforeAdmission = false;
       try {
-        await liveTurn(
+        const completed = await liveTurn(
           attempt.conversationId,
           attempt.pitch,
           attempt.version,
           attempt.id,
         );
+        delivered = true;
+        putLocal({ ...userMessage, status: "complete" });
+        if (completed.result.replyId)
+          putLocal({
+            id: completed.result.replyId,
+            conversation_id: c.id,
+            role: "assistant",
+            content: completed.result.text,
+            created_at: new Date().toISOString(),
+            provider: "gemini",
+            status: "complete",
+            telemetry_status: "pending",
+            telemetry: completed.result.telemetry,
+            evaluation: completed.result.state,
+            error: null,
+          });
         pending.current = null;
         writePending(null);
-        draft(c.id, "");
       } catch (e) {
-        rejectedBeforeAdmission =
-          e instanceof ResponseError && e.status >= 400 && e.status < 500;
-        throw e;
-      } finally {
-        setActivity({ conversationId: c.id, phase: "saving" });
-        const next = await refresh();
-        current = next;
+        failure = e;
+      }
+      setActivity({ conversationId: c.id, phase: "saving" });
+      try {
+        current = await refresh();
+      } catch {
+        setSyncRequired(true);
+        if (delivered) {
+          setError(
+            "Your reply is saved. Could not refresh the conversation; use Refresh status before sending again.",
+          );
+          return;
+        }
+      }
+      const operation = current?.operations.find((o) => o.id === attempt.id);
+      // A lost HTTP response does not mean the persisted turn failed.
+      if (!delivered && operation?.status !== "complete") {
+        const message =
+          failure instanceof Error
+            ? failure.message
+            : "Could not confirm delivery. Refresh status before retrying.";
+        if (!operation || operation.status === "failed") {
+          putLocal({ ...userMessage, status: "failed", error: message });
+        }
+        // Keep the exact request ID and version while its outcome is unknown.
         if (
-          (rejectedBeforeAdmission &&
-            !next.operations.some((o) => o.id === attempt.id)) ||
-          next.operations.some(
-            (o) =>
-              o.id === attempt.id && ["complete", "failed"].includes(o.status),
-          )
+          current &&
+          !operation &&
+          failure instanceof ResponseError &&
+          failure.status >= 400 &&
+          failure.status < 500
         ) {
           pending.current = null;
           writePending(null);
-          if (
-            next.operations.find((o) => o.id === attempt.id)?.status ===
-            "complete"
-          )
-            draft(c.id, "");
+          setLocalMessages((messages) =>
+            messages.filter((m) => m.id !== attempt.id),
+          );
         }
+        setDrafts((values) => {
+          if (values[c.id] && values[c.id] !== attempt.pitch) return values;
+          writeDraft(c.id, attempt.pitch);
+          return { ...values, [c.id]: attempt.pitch };
+        });
+        setError(message);
+        return;
       }
-      const reply = current!.data.messages
+      const reply = current?.data.messages
         .filter((m) => m.conversation_id === c.id && m.role === "assistant")
         .at(-1);
-      if (reply && reply.telemetry_status !== "complete")
-        await updateInsights(
-          c.id,
-          reply,
-          current!.conversations.find((x) => x.id === c.id)!.version,
-        );
+      const version = current?.conversations.find(
+        (x) => x.id === c.id,
+      )?.version;
+      if (
+        reply &&
+        version !== undefined &&
+        reply.telemetry_status !== "complete"
+      )
+        await updateInsights(c.id, reply, version);
     });
   }
+
   if (!snapshot)
     return (
       <main className="private-login">
@@ -332,9 +433,16 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
   const activePersonas = snapshot.data.archetypes.filter((a) => !a.archived_at);
   const selectedPersona =
     activePersonas.find((a) => a.id === archetypeId) ?? activePersonas[0];
-  const messages = snapshot.data.messages.filter(
+  const savedMessages = snapshot.data.messages.filter(
     (m) => m.conversation_id === activeId,
   );
+  const messageMap = new Map(savedMessages.map((m) => [m.id, m]));
+  for (const local of localMessages) {
+    if (local.conversation_id !== activeId) continue;
+    const saved = messageMap.get(local.id);
+    if (!saved || saved.status !== "complete") messageMap.set(local.id, local);
+  }
+  const messages = [...messageMap.values()];
   const latest = messages.filter((m) => m.role === "assistant").at(-1);
   const previousAssessment = messages
     .filter((m) => completedAssessment(m))
@@ -349,7 +457,10 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
     phase === "saving" ||
     messages.at(-1)?.role === "user";
   const sendBlocked =
-    busy || !!unfinished || snapshot.usage.status !== "available";
+    busy ||
+    syncRequired ||
+    !!unfinished ||
+    snapshot.usage.status !== "available";
   const insightError =
     latest &&
     !completedAssessment(latest) &&
@@ -397,25 +508,7 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
             disabled={busy}
             onClick={() =>
               void act(async () => {
-                const next = await refresh();
-                if (
-                  pending.current &&
-                  next.operations.some(
-                    (o) =>
-                      o.id === pending.current!.id &&
-                      ["complete", "failed"].includes(o.status),
-                  )
-                ) {
-                  draft(
-                    pending.current.conversationId,
-                    next.operations.find((o) => o.id === pending.current!.id)
-                      ?.status === "complete"
-                      ? ""
-                      : pending.current.pitch,
-                  );
-                  pending.current = null;
-                  writePending(null);
-                }
+                await refresh();
               })
             }
           >
@@ -450,7 +543,12 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               const p = pending.current!;
               setActiveId(p.conversationId);
               setView("chat");
-              draft(p.conversationId, p.pitch);
+              const conversation = snapshot.conversations.find(
+                (c) => c.id === p.conversationId,
+              );
+              if (conversation && activeId === p.conversationId)
+                void send(p.pitch);
+              else draft(p.conversationId, p.pitch);
             }}
           >
             Recover last request
@@ -695,19 +793,21 @@ export function LiveStudio({ onExit }: { onExit: () => void }) {
               messages={messages}
               provider="gemini"
               busy={sendBlocked}
-              draftDisabled={busy && phase !== "analysing"}
+              draftDisabled={busy && phase === "generating"}
               phase={phase}
               insightError={!!insightError}
               sendBlockedReason={
-                unfinished
-                  ? "A request needs to finish or be reviewed before you can send. Your draft is kept here."
-                  : snapshot.usage.status === "exhausted"
-                    ? "Your usage allowance is exhausted. You can still draft a message."
-                    : snapshot.usage.status === "pending"
-                      ? "Usage is reserved for a pending request. Refresh status before sending."
-                      : snapshot.usage.status === "review_required"
-                        ? "Usage needs administrator review before sending. You can still draft a message."
-                        : undefined
+                syncRequired
+                  ? "Refresh status to confirm the conversation before sending. Your draft is kept."
+                  : unfinished
+                    ? "A request needs to finish or be reviewed before you can send. Your draft is kept here."
+                    : snapshot.usage.status === "exhausted"
+                      ? "Your usage allowance is exhausted. You can still draft a message."
+                      : snapshot.usage.status === "pending"
+                        ? "Usage is reserved for a pending request. Refresh status before sending."
+                        : snapshot.usage.status === "review_required"
+                          ? "Usage needs administrator review before sending. You can still draft a message."
+                          : undefined
               }
               pendingHere={phase !== "idle"}
               analyticsOpen={drawer}

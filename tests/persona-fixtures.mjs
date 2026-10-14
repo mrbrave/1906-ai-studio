@@ -49,3 +49,18 @@ export function synthesisFixture() {
     },
   };
 }
+
+export function groundedFixture() {
+  const draft = synthesisFixture();
+  draft.evidence = { name: draft.name, role: draft.role };
+  for (const [key, value] of Object.entries(draft.profile)) {
+    if (key === "provenance") continue;
+    draft.evidence[key] = structuredClone(value);
+    draft.profile.provenance[key] = "provided";
+  }
+  return draft;
+}
+export const groundedDescription = () => {
+  const draft = groundedFixture();
+  return Object.values(draft.evidence).flat().join(". ");
+};

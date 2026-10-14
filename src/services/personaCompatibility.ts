@@ -31,7 +31,7 @@ export function archetypeFromSeed(
 export function upgradePersonaData(data: StudioData): StudioData {
   const next = structuredClone(data);
   next.archetypes = next.archetypes.map((a) => {
-    parseDraft(a); // Unsupported schemas fail explicitly; no reset or guessed conversion.
+    parseDraft({ ...a, avatar: undefined }); // Unsupported schemas fail explicitly; no reset or guessed conversion.
     if (
       a.profileRevision !== undefined &&
       (!Number.isSafeInteger(a.profileRevision) || a.profileRevision < 1)

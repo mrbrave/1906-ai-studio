@@ -1,4 +1,5 @@
 import { nonEmpty, parseDraft, record } from "../src/api/validation.js";
+import { DEFAULT_AVATAR } from "../src/api/avatar.js";
 import { createHash } from "node:crypto";
 import {
   archivePersona,
@@ -187,7 +188,12 @@ export async function studio(value: unknown, repo: Repository) {
     await mutate(repo, (s) => {
       const existing = s.data.archetypes.find((a) => a.id === key);
       if (existing) {
-        if (JSON.stringify(parseDraft(existing)) !== JSON.stringify(draft))
+        if (
+          JSON.stringify(parseDraft(existing)) !==
+          JSON.stringify(
+            parseDraft({ ...draft, avatar: draft.avatar ?? DEFAULT_AVATAR }),
+          )
+        )
           throw new HttpError(409, "Archetype ID already used.");
         return;
       }
@@ -195,7 +201,7 @@ export async function studio(value: unknown, repo: Repository) {
         ...draft,
         id: key,
         user_id: STUDIO_USER,
-        avatar: "🎯",
+        avatar: draft.avatar ?? DEFAULT_AVATAR,
         created_at: new Date().toISOString(),
         profileRevision: 1,
       });

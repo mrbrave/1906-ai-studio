@@ -4,6 +4,7 @@ import type {
   PersonaProfileField,
 } from "../types/persona";
 import { PROFILE_SCHEMA_VERSION } from "../api/personaProfile.js";
+import { avatarEmoji } from "../api/avatar.js";
 import { parseDraft } from "../api/validation.js";
 import type { Archetype } from "../types/database.types";
 
@@ -17,7 +18,16 @@ export function personaEditorSession(
   mode: PersonaEditorSession["mode"],
   persona?: Archetype,
 ): PersonaEditorSession {
-  const draft = persona ? parseDraft(persona) : undefined;
+  const draft = persona
+    ? parseDraft({ ...persona, avatar: undefined })
+    : undefined;
+  if (draft && persona) {
+    try {
+      draft.avatar = avatarEmoji(persona.avatar);
+    } catch {
+      /* Keep older display strings unchanged unless a new emoji is selected. */
+    }
+  }
   if (draft && mode === "duplicate") {
     draft.system_prompt = editablePrompt(draft);
     draft.name = `${draft.name.slice(0, 113)} (copy)`;

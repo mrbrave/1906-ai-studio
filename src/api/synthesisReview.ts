@@ -10,7 +10,7 @@ export function parseSynthesisReview(value: unknown): SynthesisReview {
     Object.keys(r).some(
       (k) => !["version", "identitySources", "notes"].includes(k),
     ) ||
-    r.version !== "persona-synthesis-v2" ||
+    !["persona-synthesis-v2", "persona-synthesis-v3"].includes(r.version) ||
     !r.identitySources ||
     Object.keys(r.identitySources).sort().join(",") !==
       [...IDENTITY_FIELDS].sort().join(",") ||

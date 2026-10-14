@@ -20,7 +20,7 @@ import { privatePersonaKey } from "../server/persona-private.ts";
 import { snapshot, studio } from "../server/studio.ts";
 import { createRepository, mutate } from "../server/repository.ts";
 import { runOperation } from "../server/turn.ts";
-import { synthesisFixture } from "./persona-fixtures.mjs";
+import { groundedFixture, groundedDescription } from "./persona-fixtures.mjs";
 import {
   configure,
   MemoryRepository,
@@ -353,9 +353,12 @@ test("public snapshots deeply allowlist persona, evaluation, memory and operatio
 
 test("fresh and replayed generation and dialogue responses cannot return extra internal fields", async () => {
   const repo = new MemoryRepository(),
-    generation = { requestId: randomUUID(), description: "A practical buyer" };
+    generation = {
+      requestId: randomUUID(),
+      description: groundedDescription(),
+    };
   const secret = "OPERATION_PRIVATE_SENTINEL";
-  const generatedProfile = synthesisFixture();
+  const generatedProfile = groundedFixture();
   const generated = await runOperation("archetype", generation, repo, {
     jev: async () => assert.fail("No JEV for synthesis"),
     gemini: async () => geminiResponse(JSON.stringify(generatedProfile)),

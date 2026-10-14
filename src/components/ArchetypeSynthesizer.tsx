@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, ArrowLeft } from "lucide-react";
+import { AVATAR_OPTIONS, DEFAULT_AVATAR, avatarEmoji } from "../api/avatar";
 import type { Provider } from "../types/database.types";
 import type { ArchetypeDraft } from "../api/contracts";
 import { synthesiseArchetype } from "../api/gemini.client";
@@ -14,6 +15,7 @@ import {
 
 const EMPTY: ArchetypeDraft = {
   name: "",
+  avatar: DEFAULT_AVATAR,
   role: "",
   budget_sensitivity: "Medium",
   system_prompt: "",
@@ -129,7 +131,11 @@ export function ArchetypeSynthesizer({
         provider,
         request.current.id,
       );
-      setDraft({ ...result, system_prompt: editablePrompt(result) });
+      setDraft({
+        ...result,
+        avatar: draft.avatar ?? DEFAULT_AVATAR,
+        system_prompt: editablePrompt(result),
+      });
       setOriginalProfile(result.profile);
       setInputs(profileInputs(result.profile));
       setGenerated(true);
@@ -272,7 +278,9 @@ export function ArchetypeSynthesizer({
           <section className="persona-note" aria-label="Draft review">
             <h3>Review the assumptions</h3>
             <p>
-              AI suggestions are editable assumptions. Blank fields are unknown.
+              {draft.synthesisReview.version === "persona-synthesis-v3"
+                ? "Fields were extracted from your description. Check that each excerpt belongs to the right field and buyer. Blank fields are unknown."
+                : "AI suggestions are editable assumptions. Blank fields are unknown."}
             </p>
             {draft.synthesisReview.notes.length > 0 && (
               <>
@@ -303,6 +311,53 @@ export function ArchetypeSynthesizer({
                 time.
               </p>
               <div className="form-grid">
+                <div className="full">
+                  <label htmlFor="persona-avatar">Persona emoji</label>
+                  <div
+                    className="persona-emoji-picker"
+                    role="group"
+                    aria-label="Choose persona emoji"
+                  >
+                    {AVATAR_OPTIONS.map((emoji) => (
+                      <button
+                        type="button"
+                        key={emoji}
+                        className="secondary"
+                        aria-label={`Choose ${emoji}`}
+                        aria-pressed={
+                          (draft.avatar ?? DEFAULT_AVATAR) === emoji
+                        }
+                        onClick={() => {
+                          setDraft((d) => ({ ...d, avatar: emoji }));
+                          setError("");
+                        }}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    id="persona-avatar"
+                    aria-label="Custom persona emoji"
+                    value={draft.avatar ?? DEFAULT_AVATAR}
+                    onChange={(e) => {
+                      setDraft((d) => ({ ...d, avatar: e.target.value }));
+                      setError("");
+                    }}
+                    onBlur={() => {
+                      try {
+                        avatarEmoji(draft.avatar);
+                      } catch {
+                        setError("Choose a single emoji, or select one above.");
+                      }
+                    }}
+                    maxLength={64}
+                  />
+                  <p className="muted field-hint">
+                    Choose an emoji above or paste a single emoji. This is
+                    visual only and does not change persona behaviour.
+                  </p>
+                </div>
                 <label>
                   Full name
                   <input

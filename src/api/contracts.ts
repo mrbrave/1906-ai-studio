@@ -8,4 +8,4 @@ export type ArchetypeDraft = Pick<
   | "profile"
   | "profileSchemaVersion"
   | "synthesisReview"
->;
+> & { avatar?: string };

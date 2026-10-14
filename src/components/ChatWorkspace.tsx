@@ -61,8 +61,11 @@ export function ChatWorkspace({
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
   }, [messages.at(-1)?.id, phase === "generating"]);
+  const failedTurn = messages.some(
+    (m) => m.role === "user" && m.status === "failed",
+  );
   function send() {
-    if (text.trim() && !busy && text.length <= limit) {
+    if (text.trim() && !busy && !failedTurn && text.length <= limit) {
       onSend(text);
       if (!onDraft) setText("");
     }
@@ -163,6 +166,12 @@ export function ChatWorkspace({
                 {m.role === "user" ? "You" : archetype.name}
               </small>
               <p>{m.content}</p>
+              {m.role === "user" && m.status === "pending" && (
+                <small className="muted">Sending…</small>
+              )}
+              {m.role === "user" && m.status === "complete" && (
+                <small className="muted">Sent</small>
+              )}
               {m.status === "failed" && (
                 <div className="message-failure">
                   <p>{m.error}</p>
@@ -184,7 +193,7 @@ export function ChatWorkspace({
               <i />
             </span>
             {phase === "saving"
-              ? "Loading the saved reply…"
+              ? "Refreshing conversation status…"
               : `${archetype.name} is replying…`}
           </div>
         )}
@@ -241,7 +250,7 @@ export function ChatWorkspace({
           <button
             className="send"
             aria-label="Send message"
-            disabled={busy || !text.trim() || text.length > limit}
+            disabled={busy || failedTurn || !text.trim() || text.length > limit}
           >
             <ArrowUp size={22} />
           </button>

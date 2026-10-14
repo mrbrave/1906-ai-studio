@@ -31,7 +31,8 @@ export interface Operation {
     | "persona-voice-v1"
     | "persona-voice-v2"
     | "persona-synthesis-v1"
-    | "persona-synthesis-v2";
+    | "persona-synthesis-v2"
+    | "persona-synthesis-v3";
   conversationId?: string;
   rubricVersion?: RubricVersion;
   status: "running" | "failed" | "complete" | "uncertain";
