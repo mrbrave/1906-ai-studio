@@ -3,6 +3,12 @@ import type { ArchetypeDraft } from "../src/api/contracts";
 import type { TurnResult } from "../src/types/live";
 import { nonEmpty, parseDraft, record } from "../src/api/validation.js";
 import {
+  GROUNDED_SYNTHESIS_VERSION,
+  GROUNDED_SYNTHESIS_PROMPT,
+  GROUNDED_SYNTHESIS_SCHEMA,
+  parseGroundedPersona,
+} from "./persona-grounding.js";
+import {
   dollars,
   assertFunds,
   cost,
@@ -110,7 +116,7 @@ export async function runOperation(
       ? (current.promptVersion ??
         (kind === "archetype" ? "persona-synthesis-v1" : "persona-voice-v1"))
       : kind === "archetype"
-        ? SYNTHESIS_VERSION
+        ? GROUNDED_SYNTHESIS_VERSION
         : undefined;
     let evaluationVersion = current
       ? rubricVersion(current.rubricVersion)
@@ -173,7 +179,11 @@ export async function runOperation(
     }
     const supported =
       kind === "archetype"
-        ? ["persona-synthesis-v1", SYNTHESIS_VERSION]
+        ? [
+            "persona-synthesis-v1",
+            SYNTHESIS_VERSION,
+            GROUNDED_SYNTHESIS_VERSION,
+          ]
         : ["persona-voice-v1", "persona-voice-v2"];
     if (!promptVersion || !supported.includes(promptVersion))
       throw new HttpError(
@@ -429,26 +439,37 @@ export async function runOperation(
         (await call(
           "gemini",
           geminiBody(
-            op.promptVersion === SYNTHESIS_VERSION
-              ? SYNTHESIS_PROMPT
-              : LEGACY_SYNTHESIS_PROMPT,
+            op.promptVersion === GROUNDED_SYNTHESIS_VERSION
+              ? GROUNDED_SYNTHESIS_PROMPT
+              : op.promptVersion === SYNTHESIS_VERSION
+                ? SYNTHESIS_PROMPT
+                : LEGACY_SYNTHESIS_PROMPT,
             [{ role: "user", content: String(request.description) }],
             true,
-            op.promptVersion === SYNTHESIS_VERSION
+            op.promptVersion === SYNTHESIS_VERSION ||
+              op.promptVersion === GROUNDED_SYNTHESIS_VERSION
               ? {
                   maxOutputTokens: SYNTHESIS_OUTPUT_TOKENS,
-                  responseJsonSchema: SYNTHESIS_SCHEMA,
+                  responseJsonSchema:
+                    op.promptVersion === GROUNDED_SYNTHESIS_VERSION
+                      ? GROUNDED_SYNTHESIS_SCHEMA
+                      : SYNTHESIS_SCHEMA,
                 }
               : {},
           ),
         ));
       try {
         result =
-          op.promptVersion === SYNTHESIS_VERSION
-            ? parseSynthesisedPersona(
+          op.promptVersion === GROUNDED_SYNTHESIS_VERSION
+            ? parseGroundedPersona(
                 JSON.parse(completionText(raw, SYNTHESIS_JSON_CHARS)),
+                String(request.description),
               )
-            : parseDraft(JSON.parse(completionText(raw)));
+            : op.promptVersion === SYNTHESIS_VERSION
+              ? parseSynthesisedPersona(
+                  JSON.parse(completionText(raw, SYNTHESIS_JSON_CHARS)),
+                )
+              : parseDraft(JSON.parse(completionText(raw)));
       } catch (e) {
         invalidGeneration = true;
         throw e;

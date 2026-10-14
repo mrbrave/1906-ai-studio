@@ -101,7 +101,7 @@ export function validateData(value: unknown): StudioData {
   unique(d.messages);
   for (const value of d.archetypes) {
     const p = record(value);
-    parseDraft(p);
+    parseDraft({ ...p, avatar: undefined });
     nonEmpty(p.avatar);
     date(p.created_at);
     if (p.updated_at !== undefined) date(p.updated_at);
@@ -123,7 +123,7 @@ export function validateData(value: unknown): StudioData {
       throw new Error("Invalid conversation reference.");
     if (c.archetype_snapshot !== undefined) {
       const snapshot = record(c.archetype_snapshot);
-      parseDraft(snapshot);
+      parseDraft({ ...snapshot, avatar: undefined });
       nonEmpty(snapshot.avatar);
       date(snapshot.created_at);
       if (snapshot.id !== c.archetype_id || snapshot.user_id !== user.id)

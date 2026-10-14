@@ -9,7 +9,11 @@ import {
   geminiResponse,
   jevResponse,
 } from "./helpers.mjs";
-import { synthesisFixture } from "./persona-fixtures.mjs";
+import {
+  groundedFixture,
+  groundedDescription,
+  synthesisFixture,
+} from "./persona-fixtures.mjs";
 import { runOperation } from "../server/turn.ts";
 import { studio, snapshot } from "../server/studio.ts";
 import { complete, completionText, geminiBody } from "../server/provider.ts";
@@ -36,40 +40,54 @@ import {
   completePersonaDraft,
 } from "../src/services/personaEditor.ts";
 import { publicDraft } from "../src/api/publicData.ts";
+import {
+  GROUNDED_SYNTHESIS_SCHEMA,
+  GROUNDED_SYNTHESIS_PROMPT,
+  parseGroundedPersona,
+} from "../server/persona-grounding.ts";
 beforeEach(configure);
 
 test("20,000-character synthesis uses structured output and a separate budget, then replays without charge", async () => {
   const repo = new MemoryRepository();
-  const req = { requestId: randomUUID(), description: "x".repeat(20000) };
+  const req = {
+    requestId: randomUUID(),
+    description: groundedDescription().padEnd(20000, " "),
+  };
   let calls = 0;
   const engines = {
     jev: async () => assert.fail("Synthesis must not call JEV"),
     gemini: async (body) => {
       calls++;
-      assert.equal(body.contents[0].parts[0].text, req.description);
-      assert.equal(body.systemInstruction.parts[0].text, SYNTHESIS_PROMPT);
+      assert.equal(body.contents[0].parts[0].text, req.description.trim());
+      assert.equal(
+        body.systemInstruction.parts[0].text,
+        GROUNDED_SYNTHESIS_PROMPT,
+      );
       assert.deepEqual(
         body.generationConfig.responseJsonSchema,
-        SYNTHESIS_SCHEMA,
+        GROUNDED_SYNTHESIS_SCHEMA,
       );
       assert.equal(body.generationConfig.responseMimeType, "application/json");
       assert.equal(body.generationConfig.maxOutputTokens, 6144);
       assert.equal(
         repo.state.operations[0].promptVersion,
-        "persona-synthesis-v2",
+        "persona-synthesis-v3",
       );
       assert.equal(
         repo.state.operations[0].reserve,
         reserveFor("gemini", rates("gemini")),
       );
       assert.equal(OUTPUT_RESERVE_TOKENS, 131072);
-      return geminiResponse(JSON.stringify(synthesisFixture()));
+      return geminiResponse(JSON.stringify(groundedFixture()));
     },
   };
   const first = await runOperation("archetype", req, repo, engines);
   const replay = await runOperation("archetype", req, repo, engines);
   assert.deepEqual(replay.result, first.result);
-  assert.deepEqual(first.result, parseSynthesisedPersona(synthesisFixture()));
+  assert.deepEqual(
+    first.result,
+    parseGroundedPersona(groundedFixture(), req.description),
+  );
   assert.equal(calls, 1);
   assert.equal(totals(repo.state).spent, 4875000);
   assert.equal(totals(repo.state).reserved, 0);
@@ -169,7 +187,7 @@ test("truncated or invalid synthesis retains usage and its version; explicit ret
     geminiResponse(JSON.stringify({ ...synthesisFixture(), hidden: "no" })),
   ]) {
     const repo = new MemoryRepository();
-    const req = { requestId: randomUUID(), description: "A growth buyer" };
+    const req = { requestId: randomUUID(), description: groundedDescription() };
     await assert.rejects(
       runOperation("archetype", req, repo, {
         jev: async () => assert.fail(),
@@ -185,13 +203,13 @@ test("truncated or invalid synthesis retains usage and its version; explicit ret
       jev: async () => assert.fail(),
       gemini: async (body) => {
         assert.equal(body.generationConfig.maxOutputTokens, 6144);
-        return geminiResponse(JSON.stringify(synthesisFixture()));
+        return geminiResponse(JSON.stringify(groundedFixture()));
       },
     });
     assert.equal(out.result.profileSchemaVersion, 2);
     assert.equal(
       repo.state.operations[0].promptVersion,
-      "persona-synthesis-v2",
+      "persona-synthesis-v3",
     );
     assert.equal(repo.state.operations[0].attempts.length, 2);
     assert.equal(totals(repo.state).spent, 9750000);
@@ -199,19 +217,19 @@ test("truncated or invalid synthesis retains usage and its version; explicit ret
 });
 
 test("structured JSON has its own raw response limit while the saved profile remains bounded", async () => {
-  const text = " ".repeat(17000) + JSON.stringify(synthesisFixture());
+  const text = " ".repeat(17000) + JSON.stringify(groundedFixture());
   assert.throws(() => completionText(geminiResponse(text)));
   const repo = new MemoryRepository();
   const out = await runOperation(
     "archetype",
-    { requestId: randomUUID(), description: "A growth buyer" },
+    { requestId: randomUUID(), description: groundedDescription() },
     repo,
     {
       jev: async () => assert.fail(),
       gemini: async () => geminiResponse(text),
     },
   );
-  assert.deepEqual(out.result.profile, synthesisFixture().profile);
+  assert.deepEqual(out.result.profile, groundedFixture().profile);
   assert.throws(() =>
     completionText(
       geminiResponse("x".repeat(SYNTHESIS_JSON_CHARS + 1)),
@@ -245,7 +263,7 @@ test("official token preflight includes the structured schema and still blocks o
     assert.ok(url.endsWith(":generateContent"));
     assert.deepEqual(sent, body);
     generations++;
-    return Response.json(geminiResponse(JSON.stringify(synthesisFixture())));
+    return Response.json(geminiResponse(JSON.stringify(groundedFixture())));
   };
   try {
     await complete(body);

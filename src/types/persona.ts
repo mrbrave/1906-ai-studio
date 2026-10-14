@@ -29,7 +29,7 @@ export type ProfileSource = "provided" | "inferred" | "seed" | "legacy";
 
 /** Reviewable generation assumptions, never a hidden motivational profile. */
 export interface SynthesisReview {
-  version: "persona-synthesis-v2";
+  version: "persona-synthesis-v2" | "persona-synthesis-v3";
   identitySources: Record<
     "name" | "role" | "budget_sensitivity",
     "provided" | "inferred"
