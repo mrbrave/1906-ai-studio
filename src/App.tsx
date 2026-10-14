@@ -1,3 +1,4 @@
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { PersonaManager } from "./components/PersonaManager";
 import { usePersonaNavigation } from "./components/usePersonaNavigation";
 import {
@@ -50,10 +51,15 @@ export default function App() {
     window.location.hash = enabled ? "private" : "";
     setLive(enabled);
   };
-  return live ? (
-    <LiveStudio onExit={() => change(false)} />
-  ) : (
-    <DemoApp onLive={() => change(true)} />
+  return (
+    <>
+      {live ? (
+        <LiveStudio onExit={() => change(false)} />
+      ) : (
+        <DemoApp onLive={() => change(true)} />
+      )}
+      <SpeedInsights />
+    </>
   );
 }
 function DemoApp({ onLive }: { onLive: () => void }) {
